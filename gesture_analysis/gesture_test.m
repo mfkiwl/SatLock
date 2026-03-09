@@ -11,14 +11,14 @@ obs_data = parse_rinex_obs(obs_filepath);
 fprintf('--> 正在解析导航文件: %s\n', nav_filepath);
 nav_data = parse_rinex_nav_multi_gnss(nav_filepath);
 
-obs_data = generate_ideal_multi_shape(obs_data, nav_data, 'A');
+obs_data = generate_ideal_multi_shape(obs_data, nav_data, 'Star');
 
 
 % remove_set = {'J08','S28','C49','S29','S37','R14','R15','R17','R23','R24'}; 
 % obs_data = del_sat(obs_data, remove_set);
 
 % fprintf('\n✅ 文件解析全部完成\n\n');
-calculate_and_plot_all_skyplot(obs_data, nav_data);
+% calculate_and_plot_all_skyplot(obs_data, nav_data);
 
 %模拟GNSS欺骗
 % obs_replay = simulate_gnss_spoofing(obs_data, nav_data, 'REPLAY');
@@ -36,9 +36,17 @@ calculate_and_plot_all_skyplot(obs_data, nav_data);
 % plot_sn(obs_aligned);
 
 
+% %%
+% run_gesture_analysis_continuous_track(obs_waveform, nav_data, step1_res_shaped);
+% run_gesture_analysis_continuous_track_line(obs_aligned, nav_data, step1_aligned);
+% run_gesture_analysis_boundary_trackV3(obs_waveform, nav_data, step1_res_shaped);
+% %%
+% run_gesture_analysis_physics_engine(obs_waveform, nav_data, step1_res_shaped);
+
 %%
-run_gesture_analysis_continuous_track(obs_waveform, nav_data, step1_res_shaped);
-run_gesture_analysis_continuous_track_line(obs_aligned, nav_data, step1_aligned);
-run_gesture_analysis_boundary_trackV3(obs_waveform, nav_data, step1_res_shaped);
-%%
-run_gesture_analysis_physics_engine(obs_waveform, nav_data, step1_res_shaped);
+cfg = struct();
+cfg.debug = struct('verbose', true, 'plot', true);
+cfg.track = struct('lambda_smooth', 10.0, 'final_smooth_pts', 3, 'max_jump_m', 0.22);
+
+[traj_x, traj_y, traj_t, traj_conf, dbg] = ...
+    run_gesture_analysis_inverse_beam(obs_waveform, nav_data, step1_res_shaped, cfg);
