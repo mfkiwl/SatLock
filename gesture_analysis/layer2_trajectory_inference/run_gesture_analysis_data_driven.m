@@ -263,7 +263,7 @@ meta.best_score = best_score;
 meta.score_margin = score_margin;
 meta.detail.features = feat;
 
-targeted = {'LeftSwipe', 'RightSwipe', 'C', 'L', 'V', 'X', 'Star', 'Rectangle'};
+targeted = {'LeftSwipe', 'RightSwipe', 'A', 'C', 'L', 'V', 'X', 'Star', 'Rectangle'};
 if ~any(strcmp(targeted, pred_label)) || ...
         ~isfinite(best_score) || best_score > track_cfg.shape_guided_max_score || ...
         score_margin < track_cfg.shape_guided_min_margin
@@ -275,6 +275,8 @@ switch pred_label
         [x_out, y_out, ref_meta] = refine_left_swipe_local(x_out, y_out, track_cfg);
     case 'RightSwipe'
         [x_out, y_out, ref_meta] = refine_right_swipe_local(x_out, y_out, track_cfg);
+    case 'A'
+        [x_out, y_out, ref_meta] = refine_a_shape_local(x_out, y_out);
     case 'C'
         [x_out, y_out, ref_meta] = refine_c_shape_local(x_out, y_out);
     case 'L'
@@ -407,6 +409,50 @@ y_out(valid) = pts_new(:, 2);
 meta.applied = true;
 meta.target_span = target_span;
 meta.center_y = center_y;
+end
+
+% -------------------------------------------------------------------------
+function [x_out, y_out, meta] = refine_a_shape_local(x_in, y_in)
+x_out = x_in(:);
+y_out = y_in(:);
+meta = struct('applied', false, 'blend', NaN);
+
+valid = isfinite(x_out) & isfinite(y_out);
+if nnz(valid) < 10
+    return;
+end
+
+pts = [x_out(valid), y_out(valid)];
+n = size(pts, 1);
+[pmin, pmax] = robust_bounds_local(pts);
+x_left = pmin(1);
+x_right = pmax(1);
+y_bottom = pmin(2);
+y_top = pmax(2);
+
+if (x_right - x_left) < 0.12 || (y_top - y_bottom) < 0.16
+    return;
+end
+
+apex_x = 0.5 * (x_left + x_right);
+cross_y = y_bottom + 0.40 * (y_top - y_bottom);
+cross_left = x_left + 0.25 * (x_right - x_left);
+cross_right = x_left + 0.75 * (x_right - x_left);
+
+proto = [ ...
+    x_left,  y_bottom; ...
+    apex_x,  y_top; ...
+    x_right, y_bottom; ...
+    cross_left, cross_y; ...
+    cross_right, cross_y];
+[px, py] = resample_polyline_local_dd(proto(:, 1), proto(:, 2), n);
+blend = 0.80;
+pts_new = (1 - blend) * pts + blend * [px, py];
+
+x_out(valid) = pts_new(:, 1);
+y_out(valid) = pts_new(:, 2);
+meta.applied = true;
+meta.blend = blend;
 end
 
 % -------------------------------------------------------------------------

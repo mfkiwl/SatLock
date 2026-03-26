@@ -11,8 +11,8 @@ if nargin < 1 || isempty(user_cfg)
     user_cfg = struct();
 end
 
-repo_dir = fileparts(fileparts(mfilename('fullpath')));
-addpath(genpath(repo_dir));
+repo_dir = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+ensure_project_paths_local(repo_dir);
 
 cfg = default_cfg(repo_dir);
 source_cfg = struct();
@@ -36,8 +36,8 @@ rng(cfg.random_seed, 'twister');
 source_cache_path = fullfile(work_dir, cfg.source_cache_name);
 
 if ~isempty(source_mat) && exist(source_mat, 'file') == 2
-    src = load(source_mat, 'cases', 'summary_tbl', 'cfg', 'out_dir');
-    if ~isfield(src, 'cases') || isempty(src.cases)
+    src = load(source_mat);
+    if ~isfield(src, 'src') && ~isfield(src, 'cases')
         error('export_paper_figures_data_driven:MissingCases', ...
             'The source MAT file does not contain valid case results.');
     end
@@ -48,8 +48,13 @@ else
     src = build_data_driven_source(cfg);
 end
 
-method_cases = extract_data_driven_cases(src.cases);
-template_order = resolve_template_order({method_cases.template}, cfg.template_order);
+src = normalize_loaded_source(src);
+method_cases = extract_data_driven_cases(src);
+template_order = determine_template_order_local(src, method_cases, cfg);
+auth_res = extract_or_build_auth_results(src, method_cases, template_order, cfg);
+metric_bar_tbl = build_classified_metric_table(auth_res, false);
+metric_dtw_tbl = build_classified_metric_table(auth_res, true);
+metric_cdf_tbl = build_cdf_metric_table(auth_res, cfg);
 
 if isempty(source_mat)
     save(source_cache_path, 'src', '-v7.3');
@@ -58,37 +63,21 @@ end
 manifest = cell(0, 3);
 
 [obs_base, nav_data] = deal([]);
-if cfg.sample_metrics.enable || cfg.security.enable || cfg.height.enable || cfg.sensing.enable || cfg.export_multi_gallery
+if cfg.security.enable || cfg.height.enable || cfg.sensing.enable || cfg.export_multi_gallery
     [obs_base, nav_data] = load_raw_inputs(cfg);
 end
 
-sample_tbl = table();
-if cfg.sample_metrics.enable
-    sample_cache_path = fullfile(cache_dir, cfg.sample_metrics.cache_name);
-    sample_tbl = load_or_build_sample_metrics(sample_cache_path, obs_base, nav_data, template_order, cfg);
-end
+rmse_bar_path = fullfile(out_dir, 'rmse_mte_bar.png');
+plot_rmse_mte_bar(metric_bar_tbl, method_cases, template_order, rmse_bar_path, cfg);
+manifest(end + 1, :) = {'rmse_mte_bar', 'rmse_mte_bar.png', rmse_bar_path}; %#ok<AGROW>
 
-if cfg.sample_metrics.enable
-    rmse_bar_path = fullfile(out_dir, 'rmse_mte_bar.png');
-    plot_rmse_mte_bar(sample_tbl, method_cases, template_order, rmse_bar_path, cfg);
-    manifest(end + 1, :) = {'rmse_mte_bar', 'rmse_mte_bar.png', rmse_bar_path}; %#ok<AGROW>
+dtw_box_path = fullfile(out_dir, 'dtw_boxplot.png');
+plot_dtw_box(metric_dtw_tbl, method_cases, template_order, dtw_box_path, cfg);
+manifest(end + 1, :) = {'dtw_boxplot', 'dtw_boxplot.png', dtw_box_path}; %#ok<AGROW>
 
-    rmse_bar_gallery_path = fullfile(out_dir, 'rmse_mte_bara_all_data.png');
-    plot_rmse_mte_bar([], method_cases, template_order, rmse_bar_gallery_path, cfg);
-    manifest(end + 1, :) = {'rmse_mte_bara_all_data', 'rmse_mte_bara_all_data.png', rmse_bar_gallery_path}; %#ok<AGROW>
-
-    dtw_box_path = fullfile(out_dir, 'dtw_boxplot.png');
-    plot_dtw_box(sample_tbl, method_cases, template_order, dtw_box_path, cfg);
-    manifest(end + 1, :) = {'dtw_boxplot', 'dtw_boxplot.png', dtw_box_path}; %#ok<AGROW>
-
-    dtw_box_gallery_path = fullfile(out_dir, 'dtw_boxplot_all_data.png');
-    plot_dtw_box([], method_cases, template_order, dtw_box_gallery_path, cfg);
-    manifest(end + 1, :) = {'dtw_boxplot_all_data', 'dtw_boxplot_all_data.png', dtw_box_gallery_path}; %#ok<AGROW>
-
-    cdf_path = fullfile(out_dir, 'cdf_rmse_mte.png');
-    plot_error_cdf(sample_tbl, cdf_path, cfg);
-    manifest(end + 1, :) = {'cdf_rmse_mte', 'cdf_rmse_mte.png', cdf_path}; %#ok<AGROW>
-end
+cdf_path = fullfile(out_dir, 'cdf_rmse_mte.png');
+plot_error_cdf(metric_cdf_tbl, cdf_path, cfg);
+manifest(end + 1, :) = {'cdf_rmse_mte', 'cdf_rmse_mte.png', cdf_path}; %#ok<AGROW>
 
 gallery_path = fullfile(out_dir, 'traj_gallery_data_driven.png');
 plot_single_method_gallery(method_cases, template_order, gallery_path, cfg);
@@ -107,8 +96,23 @@ if cfg.security.enable
     manifest(end + 1, :) = {'feature_space_tsne', 'feature_space_tsne.png', tsne_path}; %#ok<AGROW>
 
     conf_path = fullfile(out_dir, 'confusion_matrix.png');
-    plot_confusion_matrix(method_cases, template_order, conf_path, cfg);
+    plot_confusion_matrix(auth_res, template_order, conf_path, cfg);
     manifest(end + 1, :) = {'confusion_matrix', 'confusion_matrix.png', conf_path}; %#ok<AGROW>
+
+    dk_conf_path = fullfile(out_dir, 'dk_confusion_matrix.png');
+    plot_template_metric_matrix(auth_res, template_order, 'distance_vector', dk_conf_path, cfg, ...
+        struct('colorbar_label', 'Average D_k', 'decimals', 2, 'high_is_better', false));
+    manifest(end + 1, :) = {'dk_confusion_matrix', 'dk_confusion_matrix.png', dk_conf_path}; %#ok<AGROW>
+
+    rmse_conf_path = fullfile(out_dir, 'rmse_confusion_matrix.png');
+    plot_template_metric_matrix(auth_res, template_order, 'rmse_vector', rmse_conf_path, cfg, ...
+        struct('colorbar_label', 'Average normalized RMSE', 'decimals', 2, 'high_is_better', false));
+    manifest(end + 1, :) = {'rmse_confusion_matrix', 'rmse_confusion_matrix.png', rmse_conf_path}; %#ok<AGROW>
+
+    dtw_conf_path = fullfile(out_dir, 'dtw_confusion_matrix.png');
+    plot_template_metric_matrix(auth_res, template_order, 'dtw_vector', dtw_conf_path, cfg, ...
+        struct('colorbar_label', 'Average normalized DTW', 'decimals', 2, 'high_is_better', false));
+    manifest(end + 1, :) = {'dtw_confusion_matrix', 'dtw_confusion_matrix.png', dtw_conf_path}; %#ok<AGROW>
 end
 
 if cfg.height.enable
@@ -149,7 +153,7 @@ end
 function cfg = default_cfg(repo_dir)
 cfg = struct();
 cfg.source_mat = '';
-cfg.source_cache_name = 'data_driven_source_cache_v2.mat';
+cfg.source_cache_name = 'data_driven_source_cache_v3.mat';
 cfg.obs_filepath = fullfile(repo_dir, 'data', '1_8', 'A_1_8_1.obs');
 cfg.nav_filepath = fullfile(repo_dir, 'data', '1_8', '2026_1_8.nav');
 cfg.figure_root = '';
@@ -163,6 +167,10 @@ cfg.template_order = {};
 cfg.span_cfg = struct();
 cfg.span_cfg.max_span_x = 0.50;
 cfg.span_cfg.max_span_y = 0.50;
+
+cfg.inject_cfg = struct();
+cfg.inject_cfg.enable = true;
+cfg.inject_cfg.real_case_label = "";
 
 cfg.sim_cfg = struct();
 cfg.sim_cfg.enable = true;
@@ -210,6 +218,12 @@ cfg.data_cfg.track = struct( ...
     'axis_regularize_blend', 0.82, ...
     'axis_regularize_minor_keep', 0.15);
 
+cfg.auth_cfg = struct();
+cfg.auth_cfg.template_order = {};
+cfg.auth_cfg.compare_points = 160;
+cfg.auth_cfg.temperature = 0.18;
+cfg.auth_cfg.weights = struct('alpha_dtw', 0.45, 'beta_rmse', 0.35, 'gamma_shape', 0.20);
+
 cfg.sample_metrics = struct();
 cfg.sample_metrics.enable = true;
 cfg.sample_metrics.cache_name = 'sample_metrics_cache_v3.mat';
@@ -221,7 +235,7 @@ cfg.cdf = struct('window_points', 12, 'step_points', 4, 'best_sample_count', 120
 
 cfg.security = struct();
 cfg.security.enable = true;
-cfg.security.cache_name = 'security_dataset_cache_v2.mat';
+cfg.security.cache_name = 'security_dataset_cache_v3.mat';
 cfg.security.template_names = {};
 cfg.security.repetitions_per_template = 1;
 cfg.security.samples_per_run = 5;
@@ -241,7 +255,7 @@ cfg.height.recommended_height_cm = 30;
 
 cfg.sensing = struct();
 cfg.sensing.enable = true;
-cfg.sensing.cache_name = 'sensing_scope_cache_v2.mat';
+cfg.sensing.cache_name = 'sensing_scope_cache_v4.mat';
 cfg.sensing.plane_height_cm = 30;
 cfg.sensing.height_grid_cm = 10:5:50;
 cfg.sensing.min_elevation_deg = 0;
@@ -302,7 +316,7 @@ if isempty(source_cfg) || ~isstruct(source_cfg)
     return;
 end
 
-copy_keys = {'obs_filepath', 'nav_filepath', 'span_cfg', 'sim_cfg', 'data_cfg'};
+copy_keys = {'obs_filepath', 'nav_filepath', 'span_cfg', 'sim_cfg', 'data_cfg', 'inject_cfg', 'auth_cfg'};
 for i = 1:numel(copy_keys)
     key = copy_keys{i};
     if isfield(source_cfg, key)
@@ -327,7 +341,7 @@ end
 
 function [out_dir, work_dir, cache_dir] = prepare_output_dirs(source_mat, cfg)
 stamp = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
-base_results_dir = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'gesture_analysis', 'results');
+base_results_dir = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'gesture_analysis', 'results');
 if ~isempty(cfg.figure_root)
     out_dir = fullfile(cfg.figure_root, 'paper_figures_data_driven_output', ['paper_figures_data_driven_', stamp]);
     work_dir = fullfile(cfg.figure_root, 'paper_figures_data_driven_work');
@@ -341,56 +355,93 @@ cache_dir = fullfile(work_dir, 'cache');
 ensure_dir(cache_dir);
 end
 
-function src = build_data_driven_source(cfg)
-[obs_base, nav_data] = load_raw_inputs(cfg);
-
-if exist('gesture_template_library', 'file') == 2
-    template_names = gesture_template_library('all');
+function src = normalize_loaded_source(src_in)
+if isstruct(src_in) && isfield(src_in, 'src') && isstruct(src_in.src)
+    src = src_in.src;
 else
-    template_names = {'A', 'C', 'M', 'Star', 'L', 'X', 'Z', 'N', 'V', 'Rectangle', 'LeftSwipe', 'RightSwipe'};
+    src = src_in;
 end
-template_names = resolve_template_order(template_names, cfg.template_order);
-
-n_case = numel(template_names);
-cases = repmat(struct( ...
-    'template', '', ...
-    't_grid', [], ...
-    'gt_x', [], ...
-    'gt_y', [], ...
-    'gt_pen', [], ...
-    'num_visible_sats', NaN, ...
-    'inverse', struct(), ...
-    'data_driven', struct()), n_case, 1);
-
-for i = 1:n_case
-    template_name = template_names{i};
-    obs_sim = simulate_template_local(obs_base, nav_data, template_name, cfg.sim_cfg);
-    [~, step1_res, obs_waveform, step1_res_shaped] = run_preprocess_pipeline(obs_sim);
-    t_grid = resolve_t_grid_local(step1_res, step1_res_shaped);
-    [gt_x, gt_y, gt_pen] = build_ground_truth_local(template_name, numel(t_grid), cfg.span_cfg);
-    alg_case = run_data_driven_case(obs_waveform, nav_data, step1_res_shaped, t_grid, gt_x, gt_y, gt_pen, template_name, cfg.data_cfg);
-
-    cases(i).template = template_name;
-    cases(i).t_grid = t_grid;
-    cases(i).gt_x = gt_x;
-    cases(i).gt_y = gt_y;
-    cases(i).gt_pen = gt_pen;
-    cases(i).num_visible_sats = numel(step1_res_shaped.valid_sats);
-    cases(i).inverse = struct();
-    cases(i).data_driven = alg_case;
 end
 
-src = struct();
-src.cases = cases;
-src.summary_tbl = table();
-src.cfg = cfg;
-src.out_dir = '';
+function template_order = determine_template_order_local(src, method_cases, cfg)
+if isfield(src, 'trajectory') && isstruct(src.trajectory) && ...
+        isfield(src.trajectory, 'template_order') && ~isempty(src.trajectory.template_order)
+    template_order = resolve_template_order(src.trajectory.template_order, cfg.template_order);
+    return;
+end
+if isfield(cfg, 'auth_cfg') && isfield(cfg.auth_cfg, 'template_order') && ~isempty(cfg.auth_cfg.template_order)
+    template_order = resolve_template_order(cfg.auth_cfg.template_order, cfg.template_order);
+    return;
+end
+template_order = resolve_template_order({method_cases.template}, cfg.template_order);
 end
 
-function method_cases = extract_data_driven_cases(cases)
+function auth_res = extract_or_build_auth_results(src, method_cases, template_order, cfg)
+if isfield(src, 'auth') && isstruct(src.auth) && isfield(src.auth, 'rows') && ~isempty(src.auth.rows)
+    auth_res = src.auth;
+    return;
+end
+auth_cfg = cfg.auth_cfg;
+auth_cfg.template_order = template_order;
+auth_res = auth_build_results(method_cases, cfg.span_cfg, auth_cfg);
+end
+
+function src = build_data_driven_source(cfg)
+[~, src] = build_gesture_test_source(cfg);
+end
+
+function method_cases = extract_data_driven_cases(src)
+if isfield(src, 'trajectory') && isstruct(src.trajectory) && isfield(src.trajectory, 'gallery_cases')
+    gallery_cases = src.trajectory.gallery_cases;
+    n = numel(gallery_cases);
+    method_cases = repmat(struct( ...
+        'case_id', "", ...
+        'template', '', ...
+        'true_label', "", ...
+        't_grid', [], ...
+        'gt_x', [], ...
+        'gt_y', [], ...
+        'gt_pen', [], ...
+        'num_visible_sats', NaN, ...
+        'plot_x', [], ...
+        'plot_y', [], ...
+        'full_x', [], ...
+        'full_y', [], ...
+        'metrics', struct(), ...
+        'conf', [], ...
+        'status', ""), n, 1);
+
+    for i = 1:n
+        gc = gallery_cases(i);
+        method_cases(i).case_id = string(gc.case_id);
+        if strlength(string(gc.true_label)) > 0
+            method_cases(i).template = char(gc.true_label);
+        else
+            method_cases(i).template = char(string(gc.case_id));
+        end
+        method_cases(i).true_label = string(gc.true_label);
+        method_cases(i).t_grid = gc.t_grid;
+        method_cases(i).gt_x = gc.reference_x;
+        method_cases(i).gt_y = gc.reference_y;
+        method_cases(i).gt_pen = gc.reference_pen;
+        method_cases(i).num_visible_sats = gc.num_visible_sats;
+        method_cases(i).plot_x = gc.plot_x;
+        method_cases(i).plot_y = gc.plot_y;
+        method_cases(i).full_x = gc.full_x;
+        method_cases(i).full_y = gc.full_y;
+        method_cases(i).metrics = gc.metrics;
+        method_cases(i).conf = gc.conf;
+        method_cases(i).status = gc.status;
+    end
+    return;
+end
+
+cases = src.cases;
 n = numel(cases);
 method_cases = repmat(struct( ...
+    'case_id', "", ...
     'template', '', ...
+    'true_label', "", ...
     't_grid', [], ...
     'gt_x', [], ...
     'gt_y', [], ...
@@ -405,12 +456,10 @@ method_cases = repmat(struct( ...
     'status', ""), n, 1);
 
 for i = 1:n
-    if ~isfield(cases(i), 'data_driven')
-        error('export_paper_figures_data_driven:MissingDataDrivenField', ...
-            'Case %d does not contain the data_driven field.', i);
-    end
     dd = cases(i).data_driven;
+    method_cases(i).case_id = "legacy_case_" + string(i);
     method_cases(i).template = char(cases(i).template);
+    method_cases(i).true_label = string(cases(i).template);
     method_cases(i).t_grid = cases(i).t_grid;
     method_cases(i).gt_x = cases(i).gt_x;
     method_cases(i).gt_y = cases(i).gt_y;
@@ -429,6 +478,101 @@ end
 function [obs_base, nav_data] = load_raw_inputs(cfg)
 obs_base = parse_rinex_obs(cfg.obs_filepath);
 nav_data = parse_rinex_nav_multi_gnss(cfg.nav_filepath);
+end
+
+function metric_tbl = build_classified_metric_table(auth_res, expand_dtw)
+if nargin < 2
+    expand_dtw = false;
+end
+
+rows = empty_sample_metric_table();
+for i = 1:numel(auth_res.rows)
+    row = auth_res.rows(i);
+    template_name = string(row.predicted_label);
+    if strlength(template_name) == 0
+        continue;
+    end
+    met = row.predicted_metrics;
+    if ~isstruct(met) || ~isfinite(fallback(met.rmse_m, NaN))
+        continue;
+    end
+
+    if expand_dtw
+        tmp_case = struct('metrics', met);
+        vals = local_dtw_distribution(tmp_case, struct('min_chunks', 6, 'max_chunks', 10, 'chunk_resample_n', 24));
+        vals = vals(isfinite(vals));
+        if isempty(vals)
+            vals = met.dtw_m;
+        end
+        new_rows = table( ...
+            repmat(template_name, numel(vals), 1), ...
+            (1:numel(vals)).', ...
+            nan(numel(vals), 1), ...
+            nan(numel(vals), 1), ...
+            vals(:), ...
+            repmat(fallback(met.coverage, 0), numel(vals), 1), ...
+            repmat(template_name, numel(vals), 1), ...
+            repmat({met.aligned_est_x(:)}, numel(vals), 1), ...
+            repmat({met.aligned_est_y(:)}, numel(vals), 1), ...
+            repmat({met.aligned_gt_x(:)}, numel(vals), 1), ...
+            repmat({met.aligned_gt_y(:)}, numel(vals), 1), ...
+            'VariableNames', {'template', 'sample_id', 'rmse_m', 'mte_m', 'dtw_m', 'coverage', ...
+            'predicted_template', 'aligned_est_x', 'aligned_est_y', 'aligned_gt_x', 'aligned_gt_y'});
+    else
+        new_rows = table( ...
+            template_name, ...
+            i, ...
+            met.rmse_m, ...
+            met.mte_m, ...
+            met.dtw_m, ...
+            fallback(met.coverage, 0), ...
+            template_name, ...
+            {met.aligned_est_x(:)}, ...
+            {met.aligned_est_y(:)}, ...
+            {met.aligned_gt_x(:)}, ...
+            {met.aligned_gt_y(:)}, ...
+            'VariableNames', {'template', 'sample_id', 'rmse_m', 'mte_m', 'dtw_m', 'coverage', ...
+            'predicted_template', 'aligned_est_x', 'aligned_est_y', 'aligned_gt_x', 'aligned_gt_y'});
+    end
+
+    rows = [rows; new_rows]; %#ok<AGROW>
+end
+
+metric_tbl = rows;
+end
+
+function metric_tbl = build_cdf_metric_table(auth_res, cfg)
+rows = table(nan(0, 1), nan(0, 1), 'VariableNames', {'rmse_m', 'mte_m'});
+for i = 1:numel(auth_res.rows)
+    row = auth_res.rows(i);
+    met = row.predicted_metrics;
+    if ~isstruct(met) || isempty(met.point_errors_m)
+        continue;
+    end
+    [rmse_blocks, mte_blocks] = blockwise_error_metrics(met.point_errors_m, cfg.cdf.window_points, cfg.cdf.step_points);
+    rmse_blocks = rmse_blocks(isfinite(rmse_blocks));
+    mte_blocks = mte_blocks(isfinite(mte_blocks));
+    n = min(numel(rmse_blocks), numel(mte_blocks));
+    if n <= 0
+        continue;
+    end
+    new_rows = table(rmse_blocks(1:n), mte_blocks(1:n), 'VariableNames', {'rmse_m', 'mte_m'});
+    rows = [rows; new_rows]; %#ok<AGROW>
+end
+
+if isempty(rows)
+    fallback_rows = table(nan(0, 1), nan(0, 1), 'VariableNames', {'rmse_m', 'mte_m'});
+    for i = 1:numel(auth_res.rows)
+        met = auth_res.rows(i).predicted_metrics;
+        if ~isstruct(met) || ~isfinite(fallback(met.rmse_m, NaN))
+            continue;
+        end
+        fallback_rows = [fallback_rows; table(met.rmse_m, met.mte_m, 'VariableNames', {'rmse_m', 'mte_m'})]; %#ok<AGROW>
+    end
+    rows = fallback_rows;
+end
+
+metric_tbl = rows;
 end
 
 function sample_tbl = load_or_build_sample_metrics(cache_path, obs_base, nav_data, template_order, cfg)
@@ -523,11 +667,7 @@ else
     base_order = {'LeftSwipe', 'RightSwipe', 'A', 'B', 'C', 'L', 'M', 'N', 'V', 'X', 'Z', 'Star', 'Rectangle'};
 end
 
-if exist('gesture_template_library', 'file') == 2
-    canon = @(c) gesture_template_library('label', c);
-else
-    canon = @(c) char(string(c));
-end
+canon = @canonical_or_raw_local;
 
 names = cellfun(canon, template_names, 'UniformOutput', false);
 base_order = cellfun(canon, base_order, 'UniformOutput', false);
@@ -546,6 +686,14 @@ if ~isempty(extras)
 end
 end
 
+function out = canonical_or_raw_local(c)
+try
+    out = gesture_template_library('label', c);
+catch
+    out = char(string(c));
+end
+end
+
 function plot_rmse_mte_bar(sample_tbl, method_cases, template_order, out_path, cfg)
 ordered_cases = order_cases(method_cases, template_order);
 rmse_vals = nan(numel(template_order), 1);
@@ -556,15 +704,14 @@ for i = 1:numel(template_order)
         if any(mask)
             rmse_vals(i) = mean(sample_tbl.rmse_m(mask), 'omitnan');
             mte_vals(i) = mean(sample_tbl.mte_m(mask), 'omitnan');
-        else
-            rmse_vals(i) = fallback(ordered_cases(i).metrics.rmse_m, NaN);
-            mte_vals(i) = fallback(ordered_cases(i).metrics.mte_m, NaN);
         end
     else
         rmse_vals(i) = fallback(ordered_cases(i).metrics.rmse_m, NaN);
         mte_vals(i) = fallback(ordered_cases(i).metrics.mte_m, NaN);
     end
 end
+rmse_vals = 100 * rmse_vals;
+mte_vals = 100 * mte_vals;
 x_labels = pretty_template_labels(template_order);
 
 f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [120, 100, 1380, 620]);
@@ -583,15 +730,15 @@ b(2).FaceColor = cfg.style.mte_color;
 b(1).EdgeColor = 'none';
 b(2).EdgeColor = 'none';
 
-y_max = shared_error_axis_limit(sample_tbl, ordered_cases);
-yticks(ax, 0:0.05:y_max);
+y_max = 100 * shared_error_axis_limit(sample_tbl, ordered_cases);
+yticks(ax, 0:distance_tick_step_cm(y_max):y_max);
 ylim(ax, [0, y_max]);
 
 xlim(ax, [0.35, numel(template_order) + 0.65]);
 xticks(ax, 1:numel(template_order));
 xticklabels(ax, x_labels);
 xtickangle(ax, 28);
-ylabel(ax, 'Error (m)');
+ylabel(ax, 'Error (cm)');
 xlabel(ax, 'Gesture category');
 legend(ax, {'RMSE', 'MTE'}, 'Location', 'northwest', 'Box', 'on');
 
@@ -615,9 +762,10 @@ for i = 1:numel(ordered_cases)
         vals = local_dtw_distribution(ordered_cases(i), cfg.dtw_box);
     end
     vals = vals(isfinite(vals));
-    if isempty(vals)
+    if isempty(vals) && isempty(sample_tbl)
         vals = fallback(ordered_cases(i).metrics.dtw_m, NaN);
     end
+    vals = 100 * vals;
     all_vals = [all_vals; vals(:)]; %#ok<AGROW>
     all_grp = [all_grp; repmat(i, numel(vals), 1)]; %#ok<AGROW>
 end
@@ -647,9 +795,9 @@ xticks(ax, 1:numel(template_order));
 xticklabels(ax, pretty_template_labels(template_order));
 xtickangle(ax, 28);
 xlabel(ax, 'Gesture category');
-ylabel(ax, 'DTW distance');
-yticks(ax, 0:0.03:0.15);
-ylim(ax, [0, 0.15]);
+ylabel(ax, 'DTW distance (cm)');
+yticks(ax, 0:3:15);
+ylim(ax, [0, 15]);
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
 
@@ -661,6 +809,10 @@ x_max = 0.5;
 x_grid = linspace(x_min, x_max, max(200, cfg.cdf.smooth_grid_n)).';
 [x_rmse_s, y_rmse_s] = smooth_cdf_kde(rmse_samples, x_grid);
 [x_mte_s, y_mte_s] = smooth_cdf_kde(mte_samples, x_grid);
+x_rmse_s = 100 * x_rmse_s;
+x_mte_s = 100 * x_mte_s;
+x_min = 100 * x_min;
+x_max = 100 * x_max;
 
 f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [150, 110, 980, 620]);
 ax = axes(f);
@@ -669,12 +821,12 @@ apply_axes_style(ax, cfg);
 
 plot(ax, x_rmse_s, y_rmse_s, '-', 'Color', cfg.style.rmse_color, 'LineWidth', 2.2, 'DisplayName', 'RMSE');
 plot(ax, x_mte_s, y_mte_s, '--', 'Color', cfg.style.mte_color, 'LineWidth', 2.2, 'DisplayName', 'MTE');
-xlabel(ax, 'Error (m)');
+xlabel(ax, 'Error (cm)');
 ylabel(ax, 'CDF');
 legend(ax, 'Location', 'southeast', 'Box', 'on');
 ylim(ax, [0, 1.03]);
 xlim(ax, [x_min, x_max]);
-xticks(ax, [0.05 0.10 0.20 0.30 0.40 0.50]);
+xticks(ax, [5 10 20 30 40 50]);
 
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
@@ -727,6 +879,8 @@ n_col = min(4, max(3, ceil(sqrt(n_case))));
 n_row = ceil(n_case / n_col);
 
 [x_lim, y_lim] = common_gallery_limits(ordered_cases);
+x_lim = 100 * x_lim;
+y_lim = 100 * y_lim;
 
 f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', ...
     'Position', [60, 50, 1600, max(760, 280 * n_row)]);
@@ -739,8 +893,8 @@ for i = 1:n_case
     apply_axes_style(ax, cfg);
     axis(ax, 'equal');
 
-    gt_x = ordered_cases(i).gt_x;
-    gt_y = ordered_cases(i).gt_y;
+    gt_x = 100 * ordered_cases(i).gt_x;
+    gt_y = 100 * ordered_cases(i).gt_y;
     gt_pen = ordered_cases(i).gt_pen;
     gt_px = gt_x;
     gt_py = gt_y;
@@ -748,7 +902,7 @@ for i = 1:n_case
     gt_py(~gt_pen) = NaN;
 
     h1 = plot(ax, gt_px, gt_py, '-', 'Color', cfg.style.gt_color, 'LineWidth', 2.4);
-    h2 = plot(ax, ordered_cases(i).plot_x, ordered_cases(i).plot_y, '-', ...
+    h2 = plot(ax, 100 * ordered_cases(i).plot_x, 100 * ordered_cases(i).plot_y, '-', ...
         'Color', cfg.style.rec_color, 'LineWidth', 2.0);
     if isempty(legend_handles)
         legend_handles = [h1, h2];
@@ -760,8 +914,8 @@ for i = 1:n_case
     ylim(ax, y_lim);
     title(ax, pretty_template_label(ordered_cases(i).template), 'Interpreter', 'none', ...
         'FontName', cfg.style.font_name, 'FontSize', cfg.style.font_size);
-    xlabel(ax, 'East (m)');
-    ylabel(ax, 'North (m)');
+    xlabel(ax, 'East (cm)');
+    ylabel(ax, 'North (cm)');
 
 end
 
@@ -1008,6 +1162,20 @@ end
 y_max = ceil((y_max * 1.10) / 0.05) * 0.05;
 end
 
+function step_cm = distance_tick_step_cm(y_max_cm)
+if ~isfinite(y_max_cm) || y_max_cm <= 0
+    step_cm = 5;
+elseif y_max_cm <= 10
+    step_cm = 1;
+elseif y_max_cm <= 20
+    step_cm = 2;
+elseif y_max_cm <= 50
+    step_cm = 5;
+else
+    step_cm = 10;
+end
+end
+
 function [x_lim, y_lim] = common_gallery_limits(method_cases)
 all_x = [];
 all_y = [];
@@ -1124,8 +1292,27 @@ try
         return;
     end
 
-    [pred_label, best_score, score_margin, claim_score] = predict_template_from_trace( ...
-        alg_case.plot_x, alg_case.plot_y, claimed_template, template_order, cfg.span_cfg);
+    auth_cfg = cfg.auth_cfg;
+    auth_cfg.template_order = template_order;
+    auth_case = struct( ...
+        'case_id', "security_case", ...
+        'true_label', string(claimed_template), ...
+        't_grid', t_grid, ...
+        'plot_x', alg_case.plot_x, ...
+        'plot_y', alg_case.plot_y, ...
+        'full_x', alg_case.full_x, ...
+        'full_y', alg_case.full_y);
+    auth_res = auth_build_results(auth_case, cfg.span_cfg, auth_cfg);
+    auth_row = auth_res.rows(1);
+    pred_label = char(auth_row.predicted_label);
+    best_score = auth_row.top_score;
+    score_margin = auth_row.score_margin;
+    claim_idx = find(strcmp(auth_row.template_order, char(string(claimed_template))), 1, 'first');
+    if isempty(claim_idx)
+        claim_score = NaN;
+    else
+        claim_score = auth_row.score_vector(claim_idx);
+    end
     sat_score = max(step1_res_shaped.volatility_matrix, [], 1);
     affected_count = nnz(sat_score > cfg.height.affected_threshold);
     mean_top = mean(topk_safe(sat_score, min(5, numel(sat_score))), 'omitnan');
@@ -1224,32 +1411,44 @@ legend(ax, legend_handles, legend_labels, 'Location', 'northeast', 'Box', 'on');
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
 
-function plot_confusion_matrix(method_cases, template_order, out_path, cfg)
-true_labels = strings(0, 1);
-pred_labels = strings(0, 1);
-for i = 1:numel(method_cases)
-    if ~isfield(method_cases(i), 'plot_x') || ~isfield(method_cases(i), 'plot_y')
+function plot_confusion_matrix(auth_res, template_order, out_path, cfg)
+class_names = pretty_template_labels(template_order);
+score_mat = nan(numel(template_order), numel(template_order));
+
+for r = 1:numel(template_order)
+    true_label = string(template_order{r});
+    idx = find(arrayfun(@(x) string(x.true_label) == true_label, auth_res.rows));
+    if isempty(idx)
         continue;
     end
-    pred_label = predict_template_from_plot_trace_simple(method_cases(i).plot_x, method_cases(i).plot_y, template_order, cfg.span_cfg);
-    true_labels(end + 1, 1) = string(method_cases(i).template); %#ok<AGROW>
-    pred_labels(end + 1, 1) = string(pred_label); %#ok<AGROW>
+
+    row_scores = nan(numel(idx), numel(template_order));
+    for k = 1:numel(idx)
+        score_vec = auth_res.rows(idx(k)).score_vector;
+        if isempty(score_vec)
+            continue;
+        end
+        row_scores(k, 1:min(numel(score_vec), numel(template_order))) = score_vec(1:min(numel(score_vec), numel(template_order)));
+    end
+    row_mean = mean(row_scores, 1, 'omitnan');
+    row_mean = normalize_score_row_local(row_mean);
+    score_mat(r, :) = row_mean;
 end
-keep = strlength(true_labels) > 0 & strlength(pred_labels) > 0;
-true_labels = true_labels(keep);
-pred_labels = pred_labels(keep);
-class_names = pretty_template_labels(template_order);
-cm = confusionmat(categorical(true_labels, template_order), categorical(pred_labels, template_order));
-cm_norm = cm ./ max(sum(cm, 2), 1);
+
+score_mat(~isfinite(score_mat)) = 0;
+display_mat = score_mat;
+for r = 1:size(display_mat, 1)
+    display_mat(r, :) = round_score_row_for_display_local(display_mat(r, :), 2);
+end
 
 f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [110, 90, 920, 760]);
 ax = axes(f);
-imagesc(ax, cm_norm);
+imagesc(ax, score_mat);
 apply_axes_style(ax, cfg);
 axis(ax, 'image');
 colormap(ax, soft_confusion_colormap(256));
 cb = colorbar(ax);
-cb.Label.String = 'Normalized value';
+cb.Label.String = 'Average score';
 cb.FontName = cfg.style.font_name;
 cb.FontSize = cfg.style.font_size;
 
@@ -1261,15 +1460,16 @@ xtickangle(ax, 35);
 xlabel(ax, 'Predicted class');
 ylabel(ax, 'True class');
 
-for r = 1:size(cm_norm, 1)
-    for c = 1:size(cm_norm, 2)
-        val = cm_norm(r, c);
+for r = 1:size(score_mat, 1)
+    for c = 1:size(score_mat, 2)
+        val = score_mat(r, c);
+        disp_val = display_mat(r, c);
         if val > 0.55
             txt_color = [1 1 1];
         else
             txt_color = [0.10 0.10 0.10];
         end
-        text(ax, c, r, sprintf('%.2f', val), ...
+        text(ax, c, r, sprintf('%.2f', disp_val), ...
             'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
             'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, ...
             'Color', txt_color);
@@ -1277,6 +1477,170 @@ for r = 1:size(cm_norm, 1)
 end
 
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function plot_template_metric_matrix(auth_res, template_order, vector_field, out_path, cfg, opts)
+if nargin < 6 || isempty(opts)
+    opts = struct();
+end
+if ~isfield(opts, 'colorbar_label') || isempty(opts.colorbar_label)
+    opts.colorbar_label = 'Average value';
+end
+if ~isfield(opts, 'decimals') || isempty(opts.decimals)
+    opts.decimals = 2;
+end
+if ~isfield(opts, 'high_is_better') || isempty(opts.high_is_better)
+    opts.high_is_better = false;
+end
+
+class_names = pretty_template_labels(template_order);
+metric_mat = build_template_metric_matrix_local(auth_res, template_order, vector_field);
+display_mat = metric_mat;
+display_mat(~isfinite(display_mat)) = 0;
+
+f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [110, 90, 920, 760]);
+ax = axes(f);
+imagesc(ax, metric_mat);
+apply_axes_style(ax, cfg);
+axis(ax, 'image');
+
+if opts.high_is_better
+    cmap = soft_confusion_colormap(256);
+else
+    cmap = flipud(soft_confusion_colormap(256));
+end
+colormap(ax, cmap);
+
+finite_vals = metric_mat(isfinite(metric_mat));
+if ~isempty(finite_vals)
+    lo = min(finite_vals);
+    hi = max(finite_vals);
+    if isfinite(lo) && isfinite(hi)
+        if abs(hi - lo) < 1e-9
+            hi = lo + 1e-3;
+        end
+        caxis(ax, [lo, hi]);
+    end
+end
+
+cb = colorbar(ax);
+cb.Label.String = opts.colorbar_label;
+cb.FontName = cfg.style.font_name;
+cb.FontSize = cfg.style.font_size;
+
+xticks(ax, 1:numel(template_order));
+yticks(ax, 1:numel(template_order));
+xticklabels(ax, class_names);
+yticklabels(ax, class_names);
+xtickangle(ax, 35);
+xlabel(ax, 'Template class');
+ylabel(ax, 'True class');
+
+for r = 1:size(metric_mat, 1)
+    for c = 1:size(metric_mat, 2)
+        val = metric_mat(r, c);
+        if ~isfinite(val)
+            disp_txt = '--';
+            txt_color = [0.20 0.20 0.20];
+        else
+            disp_txt = sprintf(['%0.', num2str(opts.decimals), 'f'], display_mat(r, c));
+            txt_color = choose_heatmap_text_color_local(ax, val);
+        end
+        text(ax, c, r, disp_txt, ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+            'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, ...
+            'Color', txt_color);
+    end
+end
+
+save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function metric_mat = build_template_metric_matrix_local(auth_res, template_order, vector_field)
+n_tpl = numel(template_order);
+metric_mat = nan(n_tpl, n_tpl);
+
+for r = 1:n_tpl
+    true_label = string(template_order{r});
+    idx = find(arrayfun(@(x) string(x.true_label) == true_label, auth_res.rows));
+    if isempty(idx)
+        continue;
+    end
+
+    row_values = nan(numel(idx), n_tpl);
+    for k = 1:numel(idx)
+        row_item = auth_res.rows(idx(k));
+        if ~isfield(row_item, vector_field)
+            continue;
+        end
+        vec = row_item.(vector_field);
+        if isempty(vec)
+            continue;
+        end
+        row_values(k, 1:min(numel(vec), n_tpl)) = vec(1:min(numel(vec), n_tpl));
+    end
+
+    metric_mat(r, :) = mean(row_values, 1, 'omitnan');
+end
+
+metric_mat(~isfinite(metric_mat)) = NaN;
+end
+
+function txt_color = choose_heatmap_text_color_local(ax, val)
+cl = caxis(ax);
+if any(~isfinite(cl)) || numel(cl) ~= 2 || cl(2) <= cl(1)
+    txt_color = [0.10 0.10 0.10];
+    return;
+end
+t = (val - cl(1)) / max(cl(2) - cl(1), eps);
+t = min(max(t, 0), 1);
+if t > 0.62
+    txt_color = [1 1 1];
+else
+    txt_color = [0.10 0.10 0.10];
+end
+end
+
+function row = normalize_score_row_local(row)
+row = row(:).';
+row(~isfinite(row)) = 0;
+row(row < 0) = 0;
+row_sum = sum(row);
+if row_sum > 0
+    row = row / row_sum;
+end
+end
+
+function display_row = round_score_row_for_display_local(row, decimals)
+row = normalize_score_row_local(row);
+display_row = zeros(size(row));
+
+finite_mask = isfinite(row) & row > 0;
+if ~any(finite_mask)
+    return;
+end
+
+scale = 10 ^ max(decimals, 0);
+scaled = row(finite_mask) * scale;
+base = floor(scaled + 1e-12);
+remainder = scaled - base;
+target_sum = scale;
+need = target_sum - sum(base);
+
+if need > 0
+    [~, order] = sort(remainder, 'descend');
+    add_idx = order(1:min(need, numel(order)));
+    base(add_idx) = base(add_idx) + 1;
+elseif need < 0
+    reducible = find(base > 0);
+    if ~isempty(reducible)
+        [~, order] = sort(remainder(reducible), 'ascend');
+        sub_idx = reducible(order(1:min(-need, numel(order))));
+        base(sub_idx) = max(base(sub_idx) - 1, 0);
+    end
+end
+
+display_row(finite_mask) = base / scale;
 end
 
 function pred_label = predict_template_from_plot_trace_simple(x, y, template_order, span_cfg)
@@ -1370,13 +1734,13 @@ ylabel(ax, 'Affected satellites');
 ax.YColor = cfg.style.gt_color;
 
 yyaxis(ax, 'right');
-h2 = plot(ax, heights, rmse_mean, '-s', ...
+h2 = plot(ax, heights, 100 * rmse_mean, '-s', ...
     'Color', cfg.style.rec_color, ...
     'LineWidth', 2.1, ...
     'MarkerSize', cfg.style.marker_size, ...
     'MarkerFaceColor', cfg.style.rec_color, ...
     'DisplayName', 'Recovery RMSE');
-ylabel(ax, 'RMSE (m)');
+ylabel(ax, 'RMSE (cm)');
 ax.YColor = cfg.style.rec_color;
 
 xlabel(ax, 'Gesture plane height (cm)');
@@ -1502,6 +1866,8 @@ snapshot = struct( ...
     'visible_count', 0, ...
     'grid_x', [], ...
     'grid_y', [], ...
+    'grid_x_edges', [], ...
+    'grid_y_edges', [], ...
     'coverage_grid', [], ...
     'analysis_mean_coverage', NaN);
 
@@ -1562,15 +1928,23 @@ if size(all_circle_points, 1) >= 3
     snapshot.area_m2 = polyarea(snapshot.hull_x, snapshot.hull_y);
 end
 
-grid_axis = (-sensing_cfg.analysis_half_span_m):sensing_cfg.grid_step_m:(sensing_cfg.analysis_half_span_m);
-[GX, GY] = meshgrid(grid_axis, grid_axis);
+grid_edges = (-sensing_cfg.analysis_half_span_m):sensing_cfg.grid_step_m:(sensing_cfg.analysis_half_span_m);
+cell_centers = grid_edges(1:end-1) + 0.5 * sensing_cfg.grid_step_m;
+[GX, GY] = meshgrid(cell_centers, cell_centers);
 coverage = zeros(size(GX));
-for i = 1:size(proj_centers, 1)
-    dist_mat = hypot(GX - proj_centers(i, 1), GY - proj_centers(i, 2));
-    coverage = coverage + double(dist_mat <= sensing_cfg.sensing_radius_m);
+if ~isempty(proj_centers)
+    in_region = ...
+        proj_centers(:, 1) >= grid_edges(1) & proj_centers(:, 1) <= grid_edges(end) & ...
+        proj_centers(:, 2) >= grid_edges(1) & proj_centers(:, 2) <= grid_edges(end);
+    region_centers = proj_centers(in_region, :);
+    if ~isempty(region_centers)
+        coverage = histcounts2(region_centers(:, 2), region_centers(:, 1), grid_edges, grid_edges);
+    end
 end
 snapshot.grid_x = GX;
 snapshot.grid_y = GY;
+snapshot.grid_x_edges = grid_edges;
+snapshot.grid_y_edges = grid_edges;
 snapshot.coverage_grid = coverage;
 snapshot.analysis_mean_coverage = mean(coverage(:), 'omitnan');
 end
@@ -1594,6 +1968,8 @@ legend_labels = {};
 interaction_half = 0.5 * cfg.sensing.interaction_span_m;
 interaction_x = [-interaction_half, interaction_half, interaction_half, -interaction_half, -interaction_half];
 interaction_y = [-interaction_half, -interaction_half, interaction_half, interaction_half, -interaction_half];
+interaction_x = 100 * interaction_x;
+interaction_y = 100 * interaction_y;
 patch(ax, interaction_x, interaction_y, interaction_color, ...
     'FaceAlpha', 0.05, 'EdgeColor', 'none', 'HandleVisibility', 'off');
 h_region = plot(ax, interaction_x, interaction_y, '--', ...
@@ -1602,16 +1978,16 @@ legend_handles(end + 1) = h_region; %#ok<AGROW>
 legend_labels{end + 1} = 'Interaction region (50 cm x 50 cm)'; %#ok<AGROW>
 
 if ~isempty(snapshot.hull_x)
-    fill(ax, snapshot.hull_x, snapshot.hull_y, scope_fill_color, ...
+    fill(ax, 100 * snapshot.hull_x, 100 * snapshot.hull_y, scope_fill_color, ...
         'FaceAlpha', 0.16, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-    h_scope = plot(ax, snapshot.hull_x, snapshot.hull_y, '-', ...
+    h_scope = plot(ax, 100 * snapshot.hull_x, 100 * snapshot.hull_y, '-', ...
         'Color', scope_line_color, 'LineWidth', 2.1);
     legend_handles(end + 1) = h_scope; %#ok<AGROW>
     legend_labels{end + 1} = 'Sensing scope'; %#ok<AGROW>
 end
 
 for i = 1:numel(snapshot.circle_polys)
-    poly_xy = snapshot.circle_polys{i};
+    poly_xy = 100 * snapshot.circle_polys{i};
     if i == 1
         h_circle = plot(ax, poly_xy(:, 1), poly_xy(:, 2), '--', ...
             'Color', circle_color, 'LineWidth', 1.0);
@@ -1624,7 +2000,7 @@ for i = 1:numel(snapshot.circle_polys)
 end
 
 if ~isempty(snapshot.proj_centers)
-    h_sat = scatter(ax, snapshot.proj_centers(:, 1), snapshot.proj_centers(:, 2), ...
+    h_sat = scatter(ax, 100 * snapshot.proj_centers(:, 1), 100 * snapshot.proj_centers(:, 2), ...
         28, 'filled', 'MarkerFaceColor', sat_color, 'MarkerEdgeColor', [0.28 0.28 0.28], 'LineWidth', 0.4);
     legend_handles(end + 1) = h_sat; %#ok<AGROW>
     legend_labels{end + 1} = 'Projected satellites'; %#ok<AGROW>
@@ -1635,18 +2011,18 @@ h_recv = plot(ax, 0, 0, '^', 'MarkerSize', 9, 'MarkerFaceColor', [0.10 0.10 0.10
 legend_handles = [h_recv, legend_handles];
 legend_labels = [{'Receiver'}, legend_labels];
 
-xlabel(ax, 'East (m)');
-ylabel(ax, 'North (m)');
+xlabel(ax, 'East (cm)');
+ylabel(ax, 'North (cm)');
 
-all_x = [0; snapshot.proj_centers(:, 1); snapshot.hull_x(:)];
-all_y = [0; snapshot.proj_centers(:, 2); snapshot.hull_y(:)];
+all_x = 100 * [0; snapshot.proj_centers(:, 1); snapshot.hull_x(:)];
+all_y = 100 * [0; snapshot.proj_centers(:, 2); snapshot.hull_y(:)];
 keep = isfinite(all_x) & isfinite(all_y);
 all_x = all_x(keep);
 all_y = all_y(keep);
 if isempty(all_x)
-    lim = 1.0;
+    lim = 100;
 else
-    lim = max([max(abs(all_x)), max(abs(all_y)), 0.55]);
+    lim = max([max(abs(all_x)), max(abs(all_y)), 55]);
     lim = 1.10 * lim;
 end
 xlim(ax, [-lim, lim]);
@@ -1673,8 +2049,8 @@ xline(ax, cfg.height.recommended_height_cm, '--', 'Color', [0.45 0.45 0.45], ...
     'LineWidth', 1.2, 'HandleVisibility', 'off');
 xticks(ax, height_curve_tbl.height_cm(:).');
 xlabel(ax, 'Gesture plane height (cm)');
-ylabel(ax, 'Average affected satellites per 5 cm cell');
-legend(ax, h, {'Average affected satellites'}, 'Location', 'northeast', 'Box', 'on');
+ylabel(ax, 'Average satellites per 5 cm x 5 cm cell');
+legend(ax, h, {'Average satellites'}, 'Location', 'northeast', 'Box', 'on');
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
 
@@ -2598,4 +2974,21 @@ function v = fallback(v, default_v)
 if isempty(v) || any(~isfinite(v))
     v = default_v;
 end
+end
+
+function ensure_project_paths_local(repo_dir)
+path_cells = strsplit(genpath(repo_dir), pathsep);
+keep_mask = false(size(path_cells));
+for i = 1:numel(path_cells)
+    this_path = path_cells{i};
+    if isempty(this_path)
+        continue;
+    end
+    path_parts = regexp(lower(this_path), '[\\/]', 'split');
+    if any(strcmp(path_parts, 'trash'))
+        continue;
+    end
+    keep_mask(i) = true;
+end
+addpath(strjoin(path_cells(keep_mask), pathsep));
 end
