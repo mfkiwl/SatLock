@@ -9,7 +9,7 @@ if ~isfield(auth_cfg, 'compare_points') || isempty(auth_cfg.compare_points)
     auth_cfg.compare_points = 160;
 end
 if ~isfield(auth_cfg, 'weights') || ~isstruct(auth_cfg.weights)
-    auth_cfg.weights = struct('alpha_dtw', 0.45, 'beta_rmse', 0.35, 'gamma_shape', 0.20);
+    auth_cfg.weights = struct('alpha_dtw', 0.35, 'beta_rmse', 0.45, 'gamma_shape', 0.20);
 end
 
 trace_xy = [plot_x(:), plot_y(:)];

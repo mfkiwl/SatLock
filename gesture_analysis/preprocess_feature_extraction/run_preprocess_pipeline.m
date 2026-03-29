@@ -1,7 +1,7 @@
 function [obs_clean, step1_res, obs_waveform, step1_res_shaped, obs_aligned, step1_aligned] = ...
     run_preprocess_pipeline(obs_data)
 % RUN_PREPROCESS_PIPELINE
-% 第一层：数据处理流水线
+% 预处理流水线入口
 % 包含：GVI 分段 -> 波形整形 -> 时长对齐
 
 fprintf('--> [第一层] 执行 GVI 基础预处理...\n');

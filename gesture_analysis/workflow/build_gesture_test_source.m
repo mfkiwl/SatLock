@@ -17,12 +17,14 @@ rng(cfg.random_seed, 'twister');
 
 parsed = layer1_parse_raw_data(cfg);
 injected = layer2_inject_templates(parsed, cfg);
-trajectory = layer3_recover_trajectories(parsed, injected, cfg);
+attack = layer_attack_simulation(parsed, injected, cfg);
+trajectory = layer3_recover_trajectories(parsed, attack, cfg);
 auth = layer4_authenticate_gestures(trajectory, cfg);
 
 src = struct();
 src.parsed = strip_parsed_local(parsed);
 src.injected = strip_injected_local(injected);
+src.attack = strip_attack_local(attack);
 src.trajectory = trajectory;
 src.auth = auth;
 src.summary_tbl = auth.summary_tbl;
@@ -32,6 +34,7 @@ src.out_dir = '';
 src.workflow = struct( ...
     'layer1', "parse_raw_data", ...
     'layer2', "inject_template_data", ...
+    'attack_layer', "simulate_attack", ...
     'layer3', "recover_trajectories", ...
     'layer4', "authenticate_gestures", ...
     'created_at', string(datetime('now')));
@@ -57,6 +60,17 @@ cfg.span_cfg.max_span_y = 0.50;
 cfg.inject_cfg = struct();
 cfg.inject_cfg.enable = true;
 cfg.inject_cfg.real_case_label = "";
+
+cfg.attack_cfg = struct();
+cfg.attack_cfg.enable = false;
+cfg.attack_cfg.mode = "none";
+cfg.attack_cfg.target = "observation";
+cfg.attack_cfg.window_start_ratio = 0.25;
+cfg.attack_cfg.window_end_ratio = 0.85;
+cfg.attack_cfg.baseline_noise_sigma = 0.03;
+cfg.attack_cfg.sdr_drop_db = 8.5;
+cfg.attack_cfg.ghost_drop_db = 9.0;
+cfg.attack_cfg.random_seed = cfg.random_seed + 77;
 
 cfg.sim_cfg = struct();
 cfg.sim_cfg.enable = true;
@@ -107,8 +121,8 @@ cfg.data_cfg.track = struct( ...
 cfg.auth_cfg = struct();
 cfg.auth_cfg.template_order = {};
 cfg.auth_cfg.compare_points = 160;
-cfg.auth_cfg.temperature = 0.18;
-cfg.auth_cfg.weights = struct('alpha_dtw', 0.45, 'beta_rmse', 0.35, 'gamma_shape', 0.20);
+cfg.auth_cfg.temperature = 0.16;
+cfg.auth_cfg.weights = struct('alpha_dtw', 2.5, 'beta_rmse', 0.30, 'gamma_shape', 0.20);
 end
 
 function [work_dir, source_mat_path] = prepare_source_output_path(repo_dir)
@@ -132,6 +146,18 @@ end
 for i = 1:numel(injected.cases)
     if isfield(injected.cases(i), 'obs_case')
         injected.cases(i).obs_case = [];
+    end
+end
+end
+
+function attack = strip_attack_local(attack_in)
+attack = attack_in;
+if ~isfield(attack, 'cases')
+    return;
+end
+for i = 1:numel(attack.cases)
+    if isfield(attack.cases(i), 'obs_case')
+        attack.cases(i).obs_case = [];
     end
 end
 end

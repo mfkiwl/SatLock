@@ -58,7 +58,7 @@ function template_names = resolve_template_order_local(template_names, explicit_
 if nargin >= 2 && ~isempty(explicit_order)
     base_order = cellstr(explicit_order);
 else
-    base_order = {'LeftSwipe', 'RightSwipe', 'A', 'B', 'C', 'L', 'M', 'N', 'V', 'X', 'Z', 'Star', 'Rectangle'};
+base_order = {'LeftSwipe', 'RightSwipe', 'A', 'B', 'C', 'L', 'M', 'N', 'V', 'X', 'Z', 'Star', 'Rectangle'};
 end
 
 canon = @(c) gesture_template_store('label', c);

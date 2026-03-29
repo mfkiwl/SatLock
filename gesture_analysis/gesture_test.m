@@ -3,9 +3,10 @@
 % Refactored scientific-figure workflow:
 %   1) parse raw data
 %   2) inject template data
-%   3) run Data-Driven trajectory recovery
-%   4) authenticate gestures via Score_k on the recovered trajectories
-%   5) export paper-ready figures from the layered results
+%   3) optionally simulate attacks
+%   4) run Data-Driven trajectory recovery
+%   5) authenticate gestures via Score_k on the recovered trajectories
+%   6) export paper-ready figures from the layered results
 %
 % Notes:
 %   - Data-Driven recognition is the only trajectory result used downstream.
@@ -37,6 +38,7 @@ workflow_cfg = struct();
 workflow_cfg.obs_filepath = fullfile(repo_dir, 'data', '1_8', 'A_1_8_1.obs');
 workflow_cfg.nav_filepath = fullfile(repo_dir, 'data', '1_8', '2026_1_8.nav');
 workflow_cfg.span_cfg = struct('max_span_x', 0.50, 'max_span_y', 0.50);
+workflow_cfg.attack_cfg = struct('enable', false, 'mode', "none");
 
 %% ================= [Layer 1-3] Build Data-Driven Source =================
 fprintf('\n[gesture_test] Building Data-Driven trajectory source...\n');

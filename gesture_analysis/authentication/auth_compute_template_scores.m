@@ -6,7 +6,7 @@ if nargin < 2 || isempty(auth_cfg)
     auth_cfg = struct();
 end
 if ~isfield(auth_cfg, 'temperature') || isempty(auth_cfg.temperature)
-    auth_cfg.temperature = 0.18;
+    auth_cfg.temperature = 0.16;
 end
 
 d = distance_bundle.distance(:);

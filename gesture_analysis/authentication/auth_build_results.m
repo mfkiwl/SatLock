@@ -15,6 +15,8 @@ rows = repmat(empty_auth_row_local(), n_case, 1);
 summary_rows = repmat(struct( ...
     'case_id', "", ...
     'true_label', "", ...
+    'attack_applied', false, ...
+    'attack_mode', "", ...
     'predicted_label', "", ...
     'top_score', NaN, ...
     'score_margin', NaN, ...
@@ -44,6 +46,8 @@ for i = 1:n_case
 
     rows(i).case_id = case_id;
     rows(i).true_label = true_label;
+    rows(i).attack_applied = logical(resolve_attack_flag_local(case_item));
+    rows(i).attack_mode = string(resolve_attack_mode_local(case_item));
     rows(i).predicted_label = cls.predicted_label;
     rows(i).template_order = template_order;
     rows(i).score_vector = score_bundle.values(:).';
@@ -64,6 +68,8 @@ for i = 1:n_case
 
     summary_rows(i).case_id = case_id;
     summary_rows(i).true_label = true_label;
+    summary_rows(i).attack_applied = logical(resolve_attack_flag_local(case_item));
+    summary_rows(i).attack_mode = string(resolve_attack_mode_local(case_item));
     summary_rows(i).predicted_label = cls.predicted_label;
     summary_rows(i).top_score = cls.top_score;
     summary_rows(i).score_margin = cls.score_margin;
@@ -102,6 +108,8 @@ function row = empty_auth_row_local()
 row = struct( ...
     'case_id', "", ...
     'true_label', "", ...
+    'attack_applied', false, ...
+    'attack_mode', "", ...
     'predicted_label', "", ...
     'template_order', {{}}, ...
     'score_vector', [], ...
@@ -128,6 +136,22 @@ elseif isfield(case_item, 'template') && strlength(string(case_item.template)) >
     label = string(case_item.template);
 else
     label = "";
+end
+end
+
+function tf = resolve_attack_flag_local(case_item)
+if isfield(case_item, 'attack_applied')
+    tf = logical(case_item.attack_applied);
+else
+    tf = false;
+end
+end
+
+function mode_name = resolve_attack_mode_local(case_item)
+if isfield(case_item, 'attack_mode') && strlength(string(case_item.attack_mode)) > 0
+    mode_name = string(case_item.attack_mode);
+else
+    mode_name = "none";
 end
 end
 
