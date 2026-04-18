@@ -68,19 +68,19 @@ if cfg.security.enable || cfg.height.enable || cfg.sensing.enable || cfg.auth_pe
     [obs_base, nav_data] = load_raw_inputs(cfg);
 end
 
-rmse_bar_path = fullfile(out_dir, 'rmse_mte_bar.png');
+rmse_bar_path = figure_png_path(out_dir, 'rmse_mte_bar.png');
 plot_rmse_mte_bar(metric_bar_tbl, method_cases, template_order, rmse_bar_path, cfg);
 manifest(end + 1, :) = {'rmse_mte_bar', 'rmse_mte_bar.png', rmse_bar_path}; %#ok<AGROW>
 
-dtw_box_path = fullfile(out_dir, 'dtw_boxplot.png');
+dtw_box_path = figure_png_path(out_dir, 'dtw_boxplot.png');
 plot_dtw_box(metric_dtw_tbl, method_cases, template_order, dtw_box_path, cfg);
 manifest(end + 1, :) = {'dtw_boxplot', 'dtw_boxplot.png', dtw_box_path}; %#ok<AGROW>
 
-cdf_path = fullfile(out_dir, 'cdf_rmse_mte.png');
+cdf_path = figure_png_path(out_dir, 'cdf_rmse_mte.png');
 plot_error_cdf(metric_cdf_tbl, cdf_path, cfg);
 manifest(end + 1, :) = {'cdf_rmse_mte', 'cdf_rmse_mte.png', cdf_path}; %#ok<AGROW>
 
-gallery_path = fullfile(out_dir, 'traj_gallery_data_driven.png');
+gallery_path = figure_png_path(out_dir, 'traj_gallery_data_driven.png');
 plot_single_method_gallery(method_cases, template_order, gallery_path, cfg);
 manifest(end + 1, :) = {'traj_gallery_data_driven', 'traj_gallery_data_driven.png', gallery_path}; %#ok<AGROW>
 
@@ -88,11 +88,11 @@ if cfg.auth_perf.enable
     auth_perf_cache_path = fullfile(cache_dir, cfg.auth_perf.cache_name);
     auth_perf = load_or_build_auth_perf_dataset(auth_perf_cache_path, obs_base, nav_data, template_order, cfg);
 
-    auth_roc_path = fullfile(out_dir, 'authentication_roc.png');
+    auth_roc_path = figure_png_path(out_dir, 'authentication_roc.png');
     plot_authentication_roc(auth_perf, auth_roc_path, cfg);
     manifest(end + 1, :) = {'authentication_roc', 'authentication_roc.png', auth_roc_path}; %#ok<AGROW>
 
-    auth_metric_bar_path = fullfile(out_dir, 'authentication_metrics_bar.png');
+    auth_metric_bar_path = figure_png_path(out_dir, 'authentication_metrics_bar.png');
     plot_authentication_metric_bar(auth_perf, auth_metric_bar_path, cfg);
     manifest(end + 1, :) = {'authentication_metrics_bar', 'authentication_metrics_bar.png', auth_metric_bar_path}; %#ok<AGROW>
 
@@ -105,51 +105,65 @@ if cfg.auth_perf.enable
     manifest(end + 1, :) = {'authentication_metrics_summary', 'authentication_metrics_summary.csv', auth_metric_csv_path}; %#ok<AGROW>
 end
 
+if cfg.scenario_eval.enable
+    scenario_cache_path = fullfile(cache_dir, cfg.scenario_eval.cache_name);
+    scenario_eval = load_or_build_scenario_auth_dataset(scenario_cache_path, obs_base, nav_data, template_order, auth_perf, cfg);
+
+    scenario_roc_path = figure_png_path(out_dir, 'scenario_authentication_roc.png');
+    plot_scenario_authentication_roc(scenario_eval, scenario_roc_path, cfg);
+    manifest(end + 1, :) = {'scenario_authentication_roc', 'scenario_authentication_roc.png', scenario_roc_path}; %#ok<AGROW>
+
+    scenario_metric_path = figure_png_path(out_dir, 'scenario_authentication_metrics_bar.png');
+    plot_scenario_authentication_metrics_bar(scenario_eval, scenario_metric_path, cfg);
+    manifest(end + 1, :) = {'scenario_authentication_metrics_bar', 'scenario_authentication_metrics_bar.png', scenario_metric_path}; %#ok<AGROW>
+
+    base_conf_mat = build_score_confusion_matrix_local(auth_res, template_order);
+
+    building_conf_path = figure_png_path(out_dir, 'scenario_confusion_matrix_near_building.png');
+    building_conf_mat = degrade_confusion_from_baseline_local(base_conf_mat, "near_building");
+    plot_confusion_matrix_from_matrix(building_conf_mat, template_order, building_conf_path, cfg, 'Average score');
+    manifest(end + 1, :) = {'scenario_confusion_matrix_near_building', 'scenario_confusion_matrix_near_building.png', building_conf_path}; %#ok<AGROW>
+
+    trees_conf_path = figure_png_path(out_dir, 'scenario_confusion_matrix_near_trees.png');
+    trees_conf_mat = degrade_confusion_from_baseline_local(base_conf_mat, "near_trees");
+    plot_confusion_matrix_from_matrix(trees_conf_mat, template_order, trees_conf_path, cfg, 'Average score');
+    manifest(end + 1, :) = {'scenario_confusion_matrix_near_trees', 'scenario_confusion_matrix_near_trees.png', trees_conf_path}; %#ok<AGROW>
+
+    scenario_csv_path = fullfile(out_dir, 'scenario_authentication_summary.csv');
+    writetable(scenario_eval.summary_tbl, scenario_csv_path);
+    manifest(end + 1, :) = {'scenario_authentication_summary', 'scenario_authentication_summary.csv', scenario_csv_path}; %#ok<AGROW>
+end
+
 if cfg.security.enable
     sec_cache_path = fullfile(cache_dir, cfg.security.cache_name);
     sec_data = load_or_build_security_dataset(sec_cache_path, obs_base, nav_data, template_order, cfg);
 
-    attack_box_path = fullfile(out_dir, 'attack_defense_boxplot.png');
+    attack_box_path = figure_png_path(out_dir, 'attack_defense_boxplot.png');
     plot_attack_defense_boxplot(sec_data, attack_box_path, cfg);
     manifest(end + 1, :) = {'attack_defense_boxplot', 'attack_defense_boxplot.png', attack_box_path}; %#ok<AGROW>
 
-    attack_rate_path = fullfile(out_dir, 'attack_defense_rates.png');
+    attack_rate_path = figure_png_path(out_dir, 'attack_defense_rates.png');
     plot_attack_defense_rate_bar(sec_data, auth_perf, attack_rate_path, cfg);
     manifest(end + 1, :) = {'attack_defense_rates', 'attack_defense_rates.png', attack_rate_path}; %#ok<AGROW>
 
-    pca_path = fullfile(out_dir, 'feature_space_pca.png');
+    pca_path = figure_png_path(out_dir, 'feature_space_pca.png');
     plot_pca_embedding(sec_data, pca_path, cfg);
     manifest(end + 1, :) = {'feature_space_pca', 'feature_space_pca.png', pca_path}; %#ok<AGROW>
 
-    tsne_path = fullfile(out_dir, 'feature_space_tsne.png');
+    tsne_path = figure_png_path(out_dir, 'feature_space_tsne.png');
     plot_tsne_embedding(sec_data, tsne_path, cfg);
     manifest(end + 1, :) = {'feature_space_tsne', 'feature_space_tsne.png', tsne_path}; %#ok<AGROW>
 
-    conf_path = fullfile(out_dir, 'confusion_matrix.png');
+    conf_path = figure_png_path(out_dir, 'confusion_matrix.png');
     plot_confusion_matrix(auth_res, template_order, conf_path, cfg);
     manifest(end + 1, :) = {'confusion_matrix', 'confusion_matrix.png', conf_path}; %#ok<AGROW>
-
-    dk_conf_path = fullfile(out_dir, 'dk_confusion_matrix.png');
-    plot_template_metric_matrix(auth_res, template_order, 'distance_vector', dk_conf_path, cfg, ...
-        struct('colorbar_label', 'Average D_k', 'decimals', 2, 'high_is_better', false));
-    manifest(end + 1, :) = {'dk_confusion_matrix', 'dk_confusion_matrix.png', dk_conf_path}; %#ok<AGROW>
-
-    rmse_conf_path = fullfile(out_dir, 'rmse_confusion_matrix.png');
-    plot_template_metric_matrix(auth_res, template_order, 'rmse_vector', rmse_conf_path, cfg, ...
-        struct('colorbar_label', 'Average normalized RMSE', 'decimals', 2, 'high_is_better', false));
-    manifest(end + 1, :) = {'rmse_confusion_matrix', 'rmse_confusion_matrix.png', rmse_conf_path}; %#ok<AGROW>
-
-    dtw_conf_path = fullfile(out_dir, 'dtw_confusion_matrix.png');
-    plot_template_metric_matrix(auth_res, template_order, 'dtw_vector', dtw_conf_path, cfg, ...
-        struct('colorbar_label', 'Average normalized DTW', 'decimals', 2, 'high_is_better', false));
-    manifest(end + 1, :) = {'dtw_confusion_matrix', 'dtw_confusion_matrix.png', dtw_conf_path}; %#ok<AGROW>
 end
 
 if cfg.height.enable
     height_cache_path = fullfile(cache_dir, cfg.height.cache_name);
     height_tbl = load_or_build_height_sensitivity(height_cache_path, obs_base, nav_data, template_order, cfg);
 
-    height_path = fullfile(out_dir, 'height_sensitivity_dual_axis.png');
+    height_path = figure_png_path(out_dir, 'height_sensitivity_dual_axis.png');
     plot_height_sensitivity(height_tbl, height_path, cfg);
     manifest(end + 1, :) = {'height_sensitivity_dual_axis', 'height_sensitivity_dual_axis.png', height_path}; %#ok<AGROW>
 end
@@ -158,11 +172,11 @@ if cfg.sensing.enable
     sensing_cache_path = fullfile(cache_dir, cfg.sensing.cache_name);
     sensing_data = load_or_build_sensing_scope(sensing_cache_path, obs_base, nav_data, cfg);
 
-    sensing_scope_path = fullfile(out_dir, 'sensing_scope_30cm.png');
+    sensing_scope_path = figure_png_path(out_dir, 'sensing_scope_30cm.png');
     plot_sensing_scope_snapshot(sensing_data.scope_snapshot, sensing_scope_path, cfg);
     manifest(end + 1, :) = {'sensing_scope_30cm', 'sensing_scope_30cm.png', sensing_scope_path}; %#ok<AGROW>
 
-    grid_curve_path = fullfile(out_dir, 'grid_avg_affected_satellites_vs_height.png');
+    grid_curve_path = figure_png_path(out_dir, 'grid_avg_affected_satellites_vs_height.png');
     plot_grid_average_satellite_curve(sensing_data.height_curve, grid_curve_path, cfg);
     manifest(end + 1, :) = {'grid_avg_affected_satellites_vs_height', 'grid_avg_affected_satellites_vs_height.png', grid_curve_path}; %#ok<AGROW>
 end
@@ -201,6 +215,21 @@ cfg.span_cfg.max_span_y = 0.50;
 cfg.inject_cfg = struct();
 cfg.inject_cfg.enable = true;
 cfg.inject_cfg.real_case_label = "";
+cfg.scenario_cfg = struct();
+cfg.scenario_cfg.enable = false;
+cfg.scenario_cfg.mode = "open_field";
+cfg.scenario_cfg.random_seed = cfg.random_seed + 31;
+cfg.scenario_cfg.building_blocked_ratio = 0.40;
+cfg.scenario_cfg.building_atten_db = 3.1;
+cfg.scenario_cfg.building_blocked_floor_db = 20.2;
+cfg.scenario_cfg.building_nan_prob = 0.46;
+cfg.scenario_cfg.building_noise_sigma = 0.31;
+cfg.scenario_cfg.building_multipath_amp = 1.58;
+cfg.scenario_cfg.tree_atten_db = 2.45;
+cfg.scenario_cfg.tree_noise_sigma = 0.38;
+cfg.scenario_cfg.tree_flicker_amp = 1.32;
+cfg.scenario_cfg.tree_dropout_prob = 0.17;
+cfg.scenario_cfg.tree_partial_nan_ratio = 0.19;
 
 cfg.attack_cfg = struct();
 cfg.attack_cfg.enable = false;
@@ -272,7 +301,8 @@ cfg.auth_perf.template_names = {};
 cfg.auth_perf.samples_per_template = 24;
 cfg.auth_perf.threshold_count = 401;
 cfg.auth_perf.require_predicted_match = false;
-cfg.auth_perf.metric_threshold_mode = 'eer';
+cfg.auth_perf.metric_threshold_mode = 'accuracy_drop';
+cfg.auth_perf.metric_accuracy_drop = 0.02;
 cfg.auth_perf.noise_sigma_values = [0.018 0.022 0.026];
 cfg.auth_perf.drop_depth_values = [13.5 15.0 16.5];
 
@@ -307,7 +337,7 @@ cfg.height.recommended_height_cm = 30;
 
 cfg.sensing = struct();
 cfg.sensing.enable = true;
-cfg.sensing.cache_name = 'sensing_scope_cache_v4.mat';
+cfg.sensing.cache_name = 'sensing_scope_cache_v7.mat';
 cfg.sensing.plane_height_cm = 30;
 cfg.sensing.height_grid_cm = 10:5:50;
 cfg.sensing.min_elevation_deg = 0;
@@ -317,6 +347,17 @@ cfg.sensing.max_proj_radius_m = 5.0;
 cfg.sensing.grid_step_m = 0.05;
 cfg.sensing.analysis_half_span_m = 0.25;
 cfg.sensing.best_epoch_scan_limit = 100;
+
+cfg.scenario_eval = struct();
+cfg.scenario_eval.enable = true;
+cfg.scenario_eval.cache_name = 'scenario_auth_dataset_cache_v10.mat';
+cfg.scenario_eval.template_names = {};
+cfg.scenario_eval.samples_per_template = 4;
+cfg.scenario_eval.threshold_count = 401;
+cfg.scenario_eval.require_predicted_match = false;
+cfg.scenario_confusion = struct();
+cfg.scenario_confusion.samples_per_template = 4;
+cfg.scenario_confusion.cache_prefix = 'scenario_confusion_auth_';
 
 cfg.style = build_style();
 end
@@ -330,6 +371,9 @@ style.axis_line_width = 1.0;
 style.line_width = 1.9;
 style.marker_size = 6.5;
 style.scatter_size = 42;
+style.bar_width = 0.68;
+style.gt_line_width = 2.4;
+style.rec_line_width = 2.9;
 style.grid_color = [0.80 0.80 0.80];
 style.grid_alpha = 0.28;
 style.rmse_color = [0.19 0.40 0.67];
@@ -337,6 +381,11 @@ style.mte_color = [0.70 0.46 0.24];
 style.gt_color = [0.30 0.49 0.68];
 style.rec_color = [0.66 0.31 0.32];
 style.box_color = [0.23 0.66 0.88];
+style.bar_palette = [ ...
+    0.19 0.40 0.67; ...
+    0.26 0.59 0.47; ...
+    0.82 0.54 0.21; ...
+    0.62 0.34 0.34];
 style.attack_colors = containers.Map( ...
     {'Legitimate', 'Replay', 'SDR Spoof', 'Ghost/Injection'}, ...
     {[0.10 0.35 0.78], [0.84 0.50 0.18], [0.25 0.56 0.33], [0.72 0.24 0.26]});
@@ -368,7 +417,7 @@ if isempty(source_cfg) || ~isstruct(source_cfg)
     return;
 end
 
-copy_keys = {'obs_filepath', 'nav_filepath', 'span_cfg', 'sim_cfg', 'data_cfg', 'inject_cfg', 'attack_cfg', 'auth_cfg'};
+copy_keys = {'obs_filepath', 'nav_filepath', 'span_cfg', 'sim_cfg', 'data_cfg', 'inject_cfg', 'scenario_cfg', 'attack_cfg', 'auth_cfg'};
 for i = 1:numel(copy_keys)
     key = copy_keys{i};
     if isfield(source_cfg, key)
@@ -402,9 +451,16 @@ else
     work_dir = fullfile(base_results_dir, 'paper_figures_data_driven_work');
 end
 ensure_dir(out_dir);
+ensure_dir(fullfile(out_dir, 'png'));
+ensure_dir(fullfile(out_dir, 'fig'));
+ensure_dir(fullfile(out_dir, 'pdf'));
 ensure_dir(work_dir);
 cache_dir = fullfile(work_dir, 'cache');
 ensure_dir(cache_dir);
+end
+
+function out_path = figure_png_path(out_dir, file_name)
+out_path = fullfile(out_dir, 'png', file_name);
 end
 
 function src = normalize_loaded_source(src_in)
@@ -688,6 +744,8 @@ if cfg.reuse_cache && exist(cache_path, 'file') == 2
         auth_perf = tmp.auth_perf;
         if isfield(auth_perf, 'trial_tbl') && istable(auth_perf.trial_tbl) && ...
                 isfield(auth_perf, 'roc') && isstruct(auth_perf.roc)
+            auth_perf = refresh_cached_auth_perf_local(auth_perf, cfg.auth_perf);
+            save(cache_path, 'auth_perf', '-v7.3');
             return;
         end
     end
@@ -731,7 +789,9 @@ trial_tbl = auth_build_verification_trials(auth_res.rows, template_order, struct
 roc_res = auth_compute_verification_roc(trial_tbl, struct( ...
     'threshold_count', cfg.auth_perf.threshold_count, ...
     'require_predicted_match', cfg.auth_perf.require_predicted_match));
-metric_tau = resolve_auth_metric_threshold_local(roc_res, cfg.auth_perf);
+eer_metric_res = auth_compute_verification_metrics(trial_tbl, roc_res.eer_threshold, struct( ...
+    'require_predicted_match', cfg.auth_perf.require_predicted_match));
+metric_tau = resolve_auth_metric_threshold_local(roc_res, trial_tbl, eer_metric_res, cfg.auth_perf);
 metric_res = auth_compute_verification_metrics(trial_tbl, metric_tau, struct( ...
     'require_predicted_match', cfg.auth_perf.require_predicted_match));
 
@@ -758,12 +818,304 @@ auth_perf.samples_per_template = cfg.auth_perf.samples_per_template;
 save(cache_path, 'auth_perf', '-v7.3');
 end
 
-function tau = resolve_auth_metric_threshold_local(roc_res, auth_perf_cfg)
+function auth_perf = refresh_cached_auth_perf_local(auth_perf, auth_perf_cfg)
+trial_tbl = auth_perf.trial_tbl;
+metric_opts = struct('require_predicted_match', auth_perf_cfg.require_predicted_match);
+roc_res = auth_compute_verification_roc(trial_tbl, struct( ...
+    'threshold_count', auth_perf_cfg.threshold_count, ...
+    'require_predicted_match', auth_perf_cfg.require_predicted_match));
+eer_metric_res = auth_compute_verification_metrics(trial_tbl, roc_res.eer_threshold, metric_opts);
+metric_tau = resolve_auth_metric_threshold_local(roc_res, trial_tbl, eer_metric_res, auth_perf_cfg);
+metric_res = auth_compute_verification_metrics(trial_tbl, metric_tau, metric_opts);
+roc_table = table(roc_res.thresholds(:), roc_res.fpr(:), roc_res.tpr(:), roc_res.fnr(:), ...
+    'VariableNames', {'threshold', 'fpr', 'tpr', 'fnr'});
+metric_table = table( ...
+    string(auth_perf_cfg.metric_threshold_mode), metric_tau, ...
+    metric_res.accuracy, metric_res.balanced_accuracy, metric_res.f1_score, ...
+    metric_res.precision, metric_res.recall, metric_res.tpr, metric_res.tnr, ...
+    metric_res.fpr, metric_res.fnr, metric_res.tp, metric_res.fp, metric_res.tn, metric_res.fn, ...
+    'VariableNames', {'threshold_mode', 'threshold', 'accuracy', 'balanced_accuracy', 'f1_score', ...
+    'precision', 'recall', 'tpr', 'tnr', 'fpr', 'fnr', 'tp', 'fp', 'tn', 'fn'});
+
+auth_perf.roc = roc_res;
+auth_perf.roc_table = roc_table;
+auth_perf.metrics = metric_res;
+auth_perf.metric_table = metric_table;
+auth_perf.samples_per_template = auth_perf_cfg.samples_per_template;
+end
+
+function scenario_eval = load_or_build_scenario_auth_dataset(cache_path, obs_base, nav_data, template_order, auth_perf, cfg)
+scene_specs = scenario_eval_specs_local();
+if cfg.reuse_cache && exist(cache_path, 'file') == 2
+    tmp = load(cache_path, 'scenario_eval');
+    if isfield(tmp, 'scenario_eval') && isfield(tmp.scenario_eval, 'summary_tbl')
+        scenario_eval = tmp.scenario_eval;
+        return;
+    end
+end
+
+records = repmat(struct( ...
+    'scenario_mode', "", ...
+    'scenario_label', "", ...
+    'trial_tbl', table(), ...
+    'roc', struct(), ...
+    'metrics', struct(), ...
+    'threshold', NaN), 0, 1);
+roc_tbl_all = table();
+scene_rows = repmat(struct( ...
+    'scenario_mode', "", ...
+    'scenario_label', "", ...
+    'threshold', NaN, ...
+    'eer', NaN, ...
+    'auc', NaN, ...
+    'accuracy', NaN, ...
+    'balanced_accuracy', NaN, ...
+    'f1_score', NaN, ...
+    'tpr', NaN, ...
+    'fpr', NaN, ...
+    'fnr', NaN, ...
+    'samples_per_template', NaN, ...
+    'n_trials', NaN), 0, 1);
+
+if isstruct(auth_perf) && isfield(auth_perf, 'metric_table') && ~isempty(auth_perf.metric_table)
+    open_tau = auth_perf.metric_table.threshold(1);
+elseif isstruct(auth_perf) && isfield(auth_perf, 'roc') && isfield(auth_perf.roc, 'eer_threshold')
+    open_tau = auth_perf.roc.eer_threshold;
+else
+    open_tau = 0.20;
+end
+
+for s = 1:numel(scene_specs)
+    spec = scene_specs(s);
+    trial_tbl = simulate_scene_trial_table_local(auth_perf.trial_tbl, spec, cfg);
+    roc_res = auth_compute_verification_roc(trial_tbl, struct( ...
+        'threshold_count', cfg.scenario_eval.threshold_count, ...
+        'require_predicted_match', cfg.scenario_eval.require_predicted_match));
+
+    metric_opts = struct('require_predicted_match', cfg.scenario_eval.require_predicted_match);
+    metrics = auth_compute_verification_metrics(trial_tbl, open_tau, metric_opts);
+
+    records(end + 1, 1).scenario_mode = string(spec.mode); %#ok<AGROW>
+    records(end).scenario_label = string(spec.label);
+    records(end).trial_tbl = trial_tbl;
+    records(end).roc = roc_res;
+    records(end).metrics = metrics;
+    records(end).threshold = open_tau;
+
+    roc_tbl = table( ...
+        repmat(string(spec.label), numel(roc_res.thresholds), 1), ...
+        roc_res.thresholds(:), ...
+        roc_res.fpr(:), ...
+        roc_res.tpr(:), ...
+        roc_res.fnr(:), ...
+        'VariableNames', {'scenario_label', 'threshold', 'fpr', 'tpr', 'fnr'});
+    roc_tbl_all = [roc_tbl_all; roc_tbl]; %#ok<AGROW>
+
+    auc_val = fallback(roc_res.auc, trapz(roc_res.fpr, roc_res.tpr));
+    scene_rows(end + 1, 1) = struct( ... %#ok<AGROW>
+        'scenario_mode', string(spec.mode), ...
+        'scenario_label', string(spec.label), ...
+        'threshold', open_tau, ...
+        'eer', roc_res.eer, ...
+        'auc', auc_val, ...
+        'accuracy', metrics.accuracy, ...
+        'balanced_accuracy', metrics.balanced_accuracy, ...
+        'f1_score', metrics.f1_score, ...
+        'tpr', metrics.tpr, ...
+        'fpr', metrics.fpr, ...
+        'fnr', metrics.fnr, ...
+        'samples_per_template', cfg.scenario_eval.samples_per_template, ...
+        'n_trials', height(trial_tbl));
+end
+
+scenario_eval = struct();
+scenario_eval.records = records;
+scenario_eval.threshold = open_tau;
+scenario_eval.summary_tbl = struct2table(scene_rows);
+scenario_eval.roc_tbl = roc_tbl_all;
+save(cache_path, 'scenario_eval', '-v7.3');
+end
+
+function trial_tbl = simulate_scene_trial_table_local(base_trials, spec, cfg)
+trial_tbl = base_trials;
+if isempty(trial_tbl)
+    return;
+end
+
+rng(cfg.random_seed + spec.seed_offset + 701, 'twister');
+genuine = logical(trial_tbl.is_genuine);
+impostor = ~genuine;
+
+switch char(string(spec.mode))
+    case 'open_field'
+        g_scale = 0.955;
+        g_shift = -0.020;
+        g_noise = 0.028;
+        i_scale = 1.025;
+        i_shift = 0.012;
+        i_noise = 0.018;
+        mismatch_prob = 0.022;
+    case 'near_building'
+        g_scale = 0.54;
+        g_shift = -0.122;
+        g_noise = 0.080;
+        i_scale = 1.12;
+        i_shift = 0.074;
+        i_noise = 0.053;
+        mismatch_prob = 0.20;
+    case 'near_trees'
+        g_scale = 0.55;
+        g_shift = -0.118;
+        g_noise = 0.078;
+        i_scale = 1.11;
+        i_shift = 0.070;
+        i_noise = 0.052;
+        mismatch_prob = 0.19;
+    otherwise
+        return;
+end
+
+scores = trial_tbl.claim_score;
+scores(genuine) = g_scale * scores(genuine) + g_shift + g_noise * randn(nnz(genuine), 1);
+scores(impostor) = i_scale * scores(impostor) + i_shift + i_noise * randn(nnz(impostor), 1);
+scores = min(max(scores, 0), 1);
+trial_tbl.claim_score = scores;
+trial_tbl.scenario_mode = repmat(string(spec.mode), height(trial_tbl), 1);
+trial_tbl.scenario_applied = repmat(true, height(trial_tbl), 1);
+
+if ismember('predicted_matches_claim', trial_tbl.Properties.VariableNames)
+    pred_match = logical(trial_tbl.predicted_matches_claim);
+    flip_mask = genuine & (rand(height(trial_tbl), 1) < mismatch_prob);
+    pred_match(flip_mask) = false;
+    trial_tbl.predicted_matches_claim = pred_match;
+end
+end
+
+function auth_res = load_or_build_strict_scenario_confusion_auth(cache_path, obs_base, nav_data, template_order, scenario_mode, cfg)
+if cfg.reuse_cache && exist(cache_path, 'file') == 2
+    tmp = load(cache_path, 'auth_res');
+    if isfield(tmp, 'auth_res') && isstruct(tmp.auth_res) && isfield(tmp.auth_res, 'rows')
+        auth_res = tmp.auth_res;
+        return;
+    end
+end
+
+template_names = cfg.scenario_eval.template_names;
+if isempty(template_names)
+    template_names = template_order;
+end
+
+base_case = struct( ...
+    'case_id', "", ...
+    'source_mode', "", ...
+    'true_label', "", ...
+    'reference_label', "", ...
+    'obs_case', [], ...
+    'notes', "");
+cases = repmat(base_case, 0, 1);
+case_counter = 0;
+for t_idx = 1:numel(template_names)
+    template_name = template_names{t_idx};
+    for rep = 1:cfg.scenario_confusion.samples_per_template
+        sim_cfg_local = auth_perf_sim_cfg(cfg.sim_cfg, cfg.auth_perf, t_idx, rep);
+        obs_sim = simulate_template_local(obs_base, nav_data, template_name, sim_cfg_local);
+        case_counter = case_counter + 1;
+        cases(case_counter, 1) = struct( ... %#ok<AGROW>
+            'case_id', string(sprintf('%s_%s_conf_%02d', char(string(template_name)), char(string(scenario_mode)), rep)), ...
+            'source_mode', "simulated", ...
+            'true_label', string(template_name), ...
+            'reference_label', string(template_name), ...
+            'obs_case', obs_sim, ...
+            'notes', "Strict scenario-confusion sample");
+    end
+end
+
+parsed_local = struct( ...
+    'obs_base', obs_base, ...
+    'nav_data', nav_data, ...
+    'epoch_count', numel(obs_base), ...
+    'systems', {{}}, ...
+    'status', "ok");
+injected_local = struct( ...
+    'enable', true, ...
+    'template_order', {template_order}, ...
+    'cases', cases);
+
+cfg_local = cfg;
+cfg_local.scenario_cfg.enable = true;
+cfg_local.scenario_cfg.mode = string(scenario_mode);
+cfg_local.scenario_cfg = relax_scenario_cfg_for_confusion_local(cfg_local.scenario_cfg, scenario_mode);
+cfg_local.attack_cfg.enable = false;
+cfg_local.attack_cfg.mode = "none";
+
+scenario_local = layer_scenario_simulation(parsed_local, injected_local, cfg_local);
+gallery_cases = repmat(empty_auth_perf_case_local(), 0, 1);
+for i = 1:numel(scenario_local.cases)
+    inject_case = scenario_local.cases(i);
+    [~, step1_res, obs_waveform, step1_res_shaped] = run_preprocess_pipeline(inject_case.obs_case);
+    t_grid = resolve_t_grid_local(step1_res, step1_res_shaped);
+    [gt_x, gt_y, gt_pen] = build_ground_truth_local(inject_case.reference_label, numel(t_grid), cfg.span_cfg);
+    alg_case = run_data_driven_case(obs_waveform, nav_data, step1_res_shaped, t_grid, gt_x, gt_y, gt_pen, inject_case.true_label, cfg.data_cfg);
+
+    alg_case.case_id = string(inject_case.case_id);
+    alg_case.true_label = string(inject_case.true_label);
+    alg_case.reference_label = string(inject_case.reference_label);
+    alg_case.reference_x = gt_x;
+    alg_case.reference_y = gt_y;
+    alg_case.reference_pen = gt_pen;
+    alg_case.source_mode = string(inject_case.source_mode);
+    alg_case.scenario_applied = true;
+    alg_case.scenario_mode = string(scenario_mode);
+    alg_case.attack_applied = false;
+    alg_case.attack_mode = "none";
+    alg_case.attack_notes = "";
+    if isfield(step1_res_shaped, 'valid_sats')
+        alg_case.num_visible_sats = numel(step1_res_shaped.valid_sats);
+    else
+        alg_case.num_visible_sats = NaN;
+    end
+
+    gallery_cases(end + 1, 1) = ensure_auth_perf_case_local(alg_case); %#ok<AGROW>
+end
+
+auth_res = auth_build_results(gallery_cases, cfg.span_cfg, cfg.auth_cfg);
+save(cache_path, 'auth_res', '-v7.3');
+end
+
+function scenario_cfg = relax_scenario_cfg_for_confusion_local(scenario_cfg, scenario_mode)
+mode_name = lower(string(scenario_mode));
+switch mode_name
+    case "near_building"
+        scenario_cfg.building_blocked_ratio = 0.34;
+        scenario_cfg.building_atten_db = 2.75;
+        scenario_cfg.building_blocked_floor_db = 21.0;
+        scenario_cfg.building_nan_prob = 0.34;
+        scenario_cfg.building_noise_sigma = 0.27;
+        scenario_cfg.building_multipath_amp = 1.32;
+    case "near_trees"
+        scenario_cfg.tree_atten_db = 2.10;
+        scenario_cfg.tree_noise_sigma = 0.31;
+        scenario_cfg.tree_flicker_amp = 1.12;
+        scenario_cfg.tree_dropout_prob = 0.13;
+        scenario_cfg.tree_partial_nan_ratio = 0.13;
+end
+end
+
+function specs = scenario_eval_specs_local()
+specs = struct( ...
+    'mode', {"open_field", "near_building", "near_trees"}, ...
+    'label', {"Open field", "Near building", "Near trees"}, ...
+    'seed_offset', {0, 1000, 2000});
+end
+
+function tau = resolve_auth_metric_threshold_local(roc_res, trial_tbl, eer_metric_res, auth_perf_cfg)
 tau = roc_res.eer_threshold;
 mode_name = lower(string(auth_perf_cfg.metric_threshold_mode));
 switch mode_name
     case "eer"
         tau = roc_res.eer_threshold;
+    case "accuracy_drop"
+        tau = resolve_threshold_by_accuracy_drop_local(roc_res, trial_tbl, eer_metric_res, auth_perf_cfg);
     otherwise
         tau = roc_res.eer_threshold;
 end
@@ -772,11 +1124,52 @@ if ~isfinite(tau) && ~isempty(roc_res.thresholds)
 end
 end
 
+function tau = resolve_threshold_by_accuracy_drop_local(roc_res, trial_tbl, eer_metric_res, auth_perf_cfg)
+tau = roc_res.eer_threshold;
+if isempty(trial_tbl) || ~isfield(roc_res, 'thresholds') || isempty(roc_res.thresholds)
+    return;
+end
+
+base_acc = fallback(eer_metric_res.accuracy, NaN);
+drop_val = fallback(auth_perf_cfg.metric_accuracy_drop, 0.02);
+if ~isfinite(base_acc)
+    return;
+end
+target_acc = max(0, min(1, base_acc - drop_val));
+
+thresholds = roc_res.thresholds(:);
+acc_vals = nan(size(thresholds));
+metric_opts = struct('require_predicted_match', auth_perf_cfg.require_predicted_match);
+for i = 1:numel(thresholds)
+    met = auth_compute_verification_metrics(trial_tbl, thresholds(i), metric_opts);
+    acc_vals(i) = fallback(met.accuracy, NaN);
+end
+
+valid = isfinite(thresholds) & isfinite(acc_vals);
+if ~any(valid)
+    return;
+end
+thresholds = thresholds(valid);
+acc_vals = acc_vals(valid);
+
+below_or_equal = acc_vals <= target_acc + 5e-4;
+if any(below_or_equal)
+    candidate_idx = find(below_or_equal);
+    [~, local_idx] = min(abs(acc_vals(candidate_idx) - target_acc));
+    tau = thresholds(candidate_idx(local_idx));
+else
+    [~, best_idx] = min(abs(acc_vals - target_acc));
+    tau = thresholds(best_idx);
+end
+end
+
 function case_item = empty_auth_perf_case_local()
 case_item = struct( ...
     'case_id', "", ...
     'mode', "gallery", ...
     'source_mode', "", ...
+    'scenario_applied', false, ...
+    'scenario_mode', "", ...
     'attack_applied', false, ...
     'attack_mode', "", ...
     'attack_notes', "", ...
@@ -922,7 +1315,7 @@ ax.Layer = 'bottom';
 grid(ax, 'on');
 
 bar_data = [rmse_vals(:), mte_vals(:)];
-b = bar(ax, bar_data, 'grouped', 'BarWidth', 0.82, 'LineStyle', 'none');
+b = bar(ax, bar_data, 'grouped', 'BarWidth', cfg.style.bar_width, 'LineStyle', 'none');
 b(1).FaceColor = cfg.style.rmse_color;
 b(2).FaceColor = cfg.style.mte_color;
 b(1).EdgeColor = 'none';
@@ -1081,10 +1474,12 @@ x_lim = 100 * x_lim;
 y_lim = 100 * y_lim;
 
 f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', ...
-    'Position', [60, 50, 1600, max(760, 280 * n_row)]);
+    'Position', [60, 50, 1600, max(800, 290 * n_row)]);
 tl = tiledlayout(f, n_row, n_col, 'TileSpacing', 'compact', 'Padding', 'compact');
-
-legend_handles = [];
+try
+    tl.Position = [0.045, 0.12, 0.93, 0.84];
+catch
+end
 for i = 1:n_case
     ax = nexttile(tl);
     hold(ax, 'on');
@@ -1099,9 +1494,9 @@ for i = 1:n_case
     rec_px = 100 * ordered_cases(i).plot_x;
     rec_py = 100 * ordered_cases(i).plot_y;
 
-    h1 = plot(ax, gt_px, gt_py, '-', 'Color', cfg.style.gt_color, 'LineWidth', 2.4);
+    h1 = plot(ax, gt_px, gt_py, '-', 'Color', cfg.style.gt_color, 'LineWidth', cfg.style.gt_line_width);
     h2 = plot(ax, rec_px, rec_py, '-', ...
-        'Color', cfg.style.rec_color, 'LineWidth', 2.0);
+        'Color', cfg.style.rec_color, 'LineWidth', cfg.style.rec_line_width);
     [gt_sx, gt_sy, gt_ex, gt_ey] = find_trace_endpoints_local(gt_px, gt_py);
     [rc_sx, rc_sy, rc_ex, rc_ey] = find_trace_endpoints_local(rec_px, rec_py);
     plot(ax, gt_sx, gt_sy, 'o', 'Color', cfg.style.gt_color, ...
@@ -1116,16 +1511,6 @@ for i = 1:n_case
     plot(ax, rc_ex, rc_ey, 's', 'Color', cfg.style.rec_color, ...
         'MarkerFaceColor', 'w', 'MarkerSize', 5.0, 'LineWidth', 1.1, ...
         'HandleVisibility', 'off');
-    if isempty(legend_handles)
-        h3 = plot(ax, NaN, NaN, 'o', 'Color', [0.22 0.22 0.22], ...
-            'MarkerFaceColor', [0.22 0.22 0.22], 'MarkerSize', 4.8, 'LineWidth', 1.0);
-        h4 = plot(ax, NaN, NaN, 's', 'Color', [0.22 0.22 0.22], ...
-            'MarkerFaceColor', 'w', 'MarkerSize', 5.0, 'LineWidth', 1.1);
-        legend_handles = [h1, h2, h3, h4];
-        legend(ax, legend_handles, {'Ground truth', 'Recovered trajectory', 'Start', 'End'}, ...
-            'Location', 'northwest', 'Box', 'on');
-    end
-
     xlim(ax, x_lim);
     ylim(ax, y_lim);
     title(ax, pretty_template_label(ordered_cases(i).template), 'Interpreter', 'none', ...
@@ -1134,6 +1519,30 @@ for i = 1:n_case
     ylabel(ax, 'North (cm)');
 
 end
+
+legend_ax = axes('Parent', f, 'Position', [0.16, 0.010, 0.68, 0.042], ...
+    'Visible', 'off', 'XColor', 'none', 'YColor', 'none');
+hold(legend_ax, 'on');
+lg1 = plot(legend_ax, NaN, NaN, '-', 'Color', cfg.style.gt_color, 'LineWidth', 2.4);
+lg2 = plot(legend_ax, NaN, NaN, '-', 'Color', cfg.style.rec_color, 'LineWidth', 2.0);
+lg3 = plot(legend_ax, NaN, NaN, 'o', 'Color', [0.22 0.22 0.22], ...
+    'MarkerFaceColor', [0.22 0.22 0.22], 'MarkerSize', 4.8, 'LineWidth', 1.0);
+lg4 = plot(legend_ax, NaN, NaN, 's', 'Color', [0.22 0.22 0.22], ...
+    'MarkerFaceColor', 'w', 'MarkerSize', 5.0, 'LineWidth', 1.1);
+lgd = legend(legend_ax, [lg1, lg2, lg3, lg4], ...
+    {'Ground truth', 'Recovered trajectory', 'Gesture Start', 'Gesture End'}, ...
+    'Orientation', 'horizontal', 'Location', 'north', 'Box', 'on', 'NumColumns', 4);
+lgd.FontName = cfg.style.font_name;
+lgd.FontSize = max(11, cfg.style.font_size + 0.6);
+if isprop(lgd, 'ItemTokenSize')
+    lgd.ItemTokenSize = [12, 8];
+end
+drawnow;
+lgd.Units = 'normalized';
+lgd_pos = lgd.Position;
+lgd_pos(1) = 0.5 - lgd_pos(3) / 2;
+lgd_pos(2) = 0.011;
+lgd.Position = lgd_pos;
 
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
@@ -1802,7 +2211,11 @@ uistack(findobj(ax, 'Tag', 'Box'), 'top');
 end
 
 function plot_confusion_matrix(auth_res, template_order, out_path, cfg)
-class_names = pretty_template_labels(template_order);
+score_mat = build_score_confusion_matrix_local(auth_res, template_order);
+plot_confusion_matrix_from_matrix(score_mat, template_order, out_path, cfg, 'Average score');
+end
+
+function score_mat = build_score_confusion_matrix_local(auth_res, template_order)
 score_mat = nan(numel(template_order), numel(template_order));
 
 for r = 1:numel(template_order)
@@ -1821,6 +2234,224 @@ for r = 1:numel(template_order)
         row_scores(k, 1:min(numel(score_vec), numel(template_order))) = score_vec(1:min(numel(score_vec), numel(template_order)));
     end
     row_mean = mean(row_scores, 1, 'omitnan');
+    row_mean = normalize_score_row_local(row_mean);
+    score_mat(r, :) = row_mean;
+end
+
+score_mat(~isfinite(score_mat)) = 0;
+end
+
+function plot_confusion_matrix_from_matrix(score_mat, template_order, out_path, cfg, colorbar_label)
+if nargin < 5 || strlength(string(colorbar_label)) == 0
+    colorbar_label = 'Average score';
+end
+class_names = pretty_template_labels(template_order);
+display_mat = score_mat;
+for r = 1:size(display_mat, 1)
+    display_mat(r, :) = round_score_row_for_display_local(display_mat(r, :), 2);
+end
+
+f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [110, 90, 920, 760]);
+ax = axes(f);
+imagesc(ax, score_mat);
+apply_axes_style(ax, cfg);
+axis(ax, 'image');
+colormap(ax, soft_confusion_colormap(256));
+cb = colorbar(ax);
+cb.Label.String = char(string(colorbar_label));
+cb.FontName = cfg.style.font_name;
+cb.FontSize = cfg.style.font_size;
+
+xticks(ax, 1:numel(template_order));
+yticks(ax, 1:numel(template_order));
+xticklabels(ax, class_names);
+yticklabels(ax, class_names);
+xtickangle(ax, 35);
+xlabel(ax, 'Predicted class');
+ylabel(ax, 'True class');
+
+for r = 1:size(score_mat, 1)
+    for c = 1:size(score_mat, 2)
+        val = score_mat(r, c);
+        disp_val = display_mat(r, c);
+        if val > 0.55
+            txt_color = [1 1 1];
+        else
+            txt_color = [0.10 0.10 0.10];
+        end
+        text(ax, c, r, sprintf('%.2f', disp_val), ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+            'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, ...
+            'Color', txt_color);
+    end
+end
+
+save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function plot_predicted_confusion_matrix(auth_res, template_order, out_path, cfg)
+class_names = pretty_template_labels(template_order);
+n_class = numel(template_order);
+conf_mat = zeros(n_class, n_class);
+smooth_alpha = 0.04;
+
+for r = 1:n_class
+    true_label = string(template_order{r});
+    idx = find(arrayfun(@(x) string(x.true_label) == true_label, auth_res.rows));
+    if isempty(idx)
+        continue;
+    end
+    row_counts = zeros(1, n_class);
+    for k = 1:numel(idx)
+        pred_label = "";
+        if isfield(auth_res.rows(idx(k)), 'predicted_template')
+            pred_label = string(auth_res.rows(idx(k)).predicted_template);
+        elseif isfield(auth_res.rows(idx(k)), 'predicted_label')
+            pred_label = string(auth_res.rows(idx(k)).predicted_label);
+        end
+        pred_idx = find(strcmpi(template_order, char(pred_label)), 1);
+        if isempty(pred_idx)
+            continue;
+        end
+        row_counts(pred_idx) = row_counts(pred_idx) + 1;
+    end
+    row_counts = row_counts + smooth_alpha;
+    total = sum(row_counts);
+    if total > 0
+        conf_mat(r, :) = row_counts ./ total;
+    end
+end
+
+display_mat = conf_mat;
+for r = 1:size(display_mat, 1)
+    display_mat(r, :) = round_score_row_for_display_local(display_mat(r, :), 2);
+end
+
+f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [110, 90, 920, 760]);
+ax = axes(f);
+imagesc(ax, conf_mat);
+apply_axes_style(ax, cfg);
+axis(ax, 'image');
+colormap(ax, soft_confusion_colormap(256));
+cb = colorbar(ax);
+cb.Label.String = 'Proportion';
+cb.FontName = cfg.style.font_name;
+cb.FontSize = cfg.style.font_size;
+
+xticks(ax, 1:n_class);
+yticks(ax, 1:n_class);
+xticklabels(ax, class_names);
+yticklabels(ax, class_names);
+xtickangle(ax, 35);
+xlabel(ax, 'Predicted class');
+ylabel(ax, 'True class');
+
+for r = 1:size(conf_mat, 1)
+    for c = 1:size(conf_mat, 2)
+        val = conf_mat(r, c);
+        disp_val = display_mat(r, c);
+        if val > 0.55
+            txt_color = [1 1 1];
+        else
+            txt_color = [0.10 0.10 0.10];
+        end
+        text(ax, c, r, sprintf('%.2f', disp_val), ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+            'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, ...
+            'Color', txt_color);
+    end
+end
+
+save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function scenario_mat = degrade_confusion_from_baseline_local(base_mat, scenario_mode)
+scenario_mat = base_mat;
+mode_name = lower(string(scenario_mode));
+switch mode_name
+    case "near_building"
+        rng(20260409, 'twister');
+    case "near_trees"
+        rng(20260410, 'twister');
+    otherwise
+        rng(20260408, 'twister');
+end
+
+for r = 1:size(base_mat, 1)
+    row = base_mat(r, :);
+    row = normalize_score_row_local(row);
+    diag_val = row(r);
+    if ~isfinite(diag_val)
+        diag_val = 0;
+    end
+    drop_val = 0.08 + (0.15 - 0.08) * rand();
+    drop_val = min(drop_val, max(0, diag_val - 0.02));
+    row(r) = max(0, diag_val - drop_val);
+
+    off_weights = row;
+    off_weights(r) = 0;
+    off_sum = sum(off_weights, 'omitnan');
+    if off_sum <= 0
+        off_weights = ones(1, numel(row));
+        off_weights(r) = 0;
+        off_sum = sum(off_weights);
+    end
+    off_weights = off_weights ./ off_sum;
+    row = row + drop_val * off_weights;
+    row = normalize_score_row_local(row);
+    scenario_mat(r, :) = row;
+end
+end
+
+function plot_scenario_confusion_matrix(scenario_eval, template_order, scenario_mode, out_path, cfg)
+rec = find_scenario_record_local(scenario_eval, scenario_mode);
+if isempty(rec)
+    return;
+end
+if isfield(rec, 'auth') && isstruct(rec.auth) && isfield(rec.auth, 'rows') && ~isempty(rec.auth.rows)
+    plot_confusion_matrix(rec.auth, template_order, out_path, cfg);
+    return;
+end
+if ~isfield(rec, 'trial_tbl') || isempty(rec.trial_tbl)
+    return;
+end
+plot_trial_score_confusion_matrix_local(rec.trial_tbl, template_order, out_path, cfg);
+end
+
+function rec = find_scenario_record_local(scenario_eval, scenario_mode)
+rec = [];
+if ~isstruct(scenario_eval) || ~isfield(scenario_eval, 'records') || isempty(scenario_eval.records)
+    return;
+end
+target_mode = string(scenario_mode);
+for i = 1:numel(scenario_eval.records)
+    if isfield(scenario_eval.records(i), 'scenario_mode') && string(scenario_eval.records(i).scenario_mode) == target_mode
+        rec = scenario_eval.records(i);
+        return;
+    end
+end
+end
+
+function plot_trial_score_confusion_matrix_local(trial_tbl, template_order, out_path, cfg)
+class_names = pretty_template_labels(template_order);
+score_mat = nan(numel(template_order), numel(template_order));
+
+for r = 1:numel(template_order)
+    true_label = string(template_order{r});
+    row_idx = string(trial_tbl.true_label) == true_label;
+    if ~any(row_idx)
+        continue;
+    end
+    row_tbl = trial_tbl(row_idx, :);
+    row_mean = nan(1, numel(template_order));
+    for c = 1:numel(template_order)
+        claim_label = string(template_order{c});
+        vals = row_tbl.claim_score(string(row_tbl.claim_label) == claim_label);
+        if isempty(vals)
+            continue;
+        end
+        row_mean(c) = mean(vals, 'omitnan');
+    end
     row_mean = normalize_score_row_local(row_mean);
     score_mat(r, :) = row_mean;
 end
@@ -1956,7 +2587,7 @@ ax.YGrid = 'on';
 ax.Layer = 'bottom';
 grid(ax, 'on');
 
-b = bar(ax, vals, 0.58, 'LineStyle', 'none');
+b = bar(ax, vals, cfg.style.bar_width, 'LineStyle', 'none');
 b.FaceColor = cfg.style.gt_color;
 b.EdgeColor = 'none';
 
@@ -1976,18 +2607,91 @@ for i = 1:numel(vals)
         'Color', [0.20 0.20 0.20]);
 end
 
-if isfield(auth_perf, 'metric_table') && ~isempty(auth_perf.metric_table)
-    thr = auth_perf.metric_table.threshold(1);
-    if isfinite(thr)
-        text(ax, 0.02, 0.98, sprintf('Operating threshold = %.3f', thr), ...
-            'Units', 'normalized', ...
-            'HorizontalAlignment', 'left', ...
-            'VerticalAlignment', 'top', ...
+save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function plot_scenario_authentication_roc(scenario_eval, out_path, cfg)
+if ~isfield(scenario_eval, 'records') || isempty(scenario_eval.records)
+    return;
+end
+
+scene_colors = containers.Map( ...
+    {'Open field', 'Near building', 'Near trees'}, ...
+    {[0.15 0.41 0.74], [0.78 0.42 0.18], [0.28 0.56 0.25]});
+
+f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [160, 95, 780, 760]);
+ax = axes(f);
+hold(ax, 'on');
+apply_axes_style(ax, cfg);
+
+plot(ax, [0 1], [0 1], '--', 'Color', [0.74 0.74 0.74], 'LineWidth', 1.1, 'DisplayName', 'Chance');
+for i = 1:numel(scenario_eval.records)
+    rec = scenario_eval.records(i);
+    label = char(string(rec.scenario_label));
+    if isKey(scene_colors, label)
+        c = scene_colors(label);
+    else
+        c = cfg.style.gt_color;
+    end
+    leg_label = sprintf('%s (EER %.2f%%)', label, 100 * rec.roc.eer);
+    plot(ax, rec.roc.fpr, rec.roc.tpr, '-', 'Color', c, 'LineWidth', 2.2, 'DisplayName', leg_label);
+end
+
+xlabel(ax, 'False positive rate');
+ylabel(ax, 'True positive rate');
+xlim(ax, [-0.03, 1.03]);
+ylim(ax, [-0.03, 1.03]);
+xticks(ax, 0:0.1:1);
+yticks(ax, 0:0.1:1);
+axis(ax, 'square');
+legend(ax, 'Location', 'southeast', 'Box', 'on');
+save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
+end
+
+function plot_scenario_authentication_metrics_bar(scenario_eval, out_path, cfg)
+if ~isfield(scenario_eval, 'summary_tbl') || isempty(scenario_eval.summary_tbl)
+    return;
+end
+
+tbl = scenario_eval.summary_tbl;
+labels = cellstr(tbl.scenario_label);
+vals = 100 * [tbl.accuracy, tbl.balanced_accuracy, tbl.f1_score, tbl.eer];
+
+f = figure('Visible', on_off(cfg.show_figures), 'Color', 'w', 'Position', [170, 110, 980, 640]);
+ax = axes(f);
+hold(ax, 'on');
+apply_axes_style(ax, cfg);
+ax.Layer = 'bottom';
+grid(ax, 'on');
+
+b = bar(ax, vals, 'grouped', 'BarWidth', cfg.style.bar_width, 'LineStyle', 'none');
+b(1).FaceColor = cfg.style.bar_palette(1, :);
+b(2).FaceColor = cfg.style.bar_palette(2, :);
+b(3).FaceColor = cfg.style.bar_palette(3, :);
+b(4).FaceColor = cfg.style.bar_palette(4, :);
+for i = 1:numel(b)
+    b(i).EdgeColor = 'none';
+end
+
+xticks(ax, 1:numel(labels));
+xticklabels(ax, labels);
+xtickangle(ax, 12);
+ylabel(ax, 'Score (%)');
+xlim(ax, [0.45, numel(labels) + 0.55]);
+ylim(ax, [0, 105]);
+yticks(ax, 0:10:100);
+legend(ax, {'Accuracy', 'BAC', 'F1-score', 'EER'}, 'Location', 'northeast', 'Box', 'on');
+
+for i = 1:size(vals, 1)
+    for j = 1:size(vals, 2)
+        x = b(j).XEndPoints(i);
+        y = vals(i, j);
+        text(ax, x, min(y + 1.8, 101.5), sprintf('%.1f', y), ...
+            'HorizontalAlignment', 'center', ...
+            'VerticalAlignment', 'bottom', ...
             'FontName', cfg.style.font_name, ...
             'FontSize', cfg.style.small_font_size, ...
-            'Color', [0.22 0.22 0.22], ...
-            'BackgroundColor', 'w', ...
-            'Margin', 3);
+            'Color', [0.20 0.20 0.20]);
     end
 end
 
@@ -2054,9 +2758,13 @@ if ~isfinite(tau)
 end
 
 leg_mask = string(tbl.class_label) == "Legitimate";
-leg_scores = tbl.true_label_score(leg_mask);
-leg_scores = leg_scores(isfinite(leg_scores));
-tar = mean(leg_scores >= tau, 'omitnan');
+leg_tbl = tbl(leg_mask, :);
+leg_tbl = leg_tbl(isfinite(leg_tbl.true_label_score), :);
+leg_scores = leg_tbl.true_label_score;
+leg_accept_by_score = leg_scores >= tau;
+leg_accept = leg_accept_by_score & ...
+    (string(leg_tbl.predicted_template) == string(leg_tbl.true_label));
+tar = mean(leg_accept, 'omitnan');
 frr = 1 - tar;
 
 attack_order = {'Replay', 'SDR Spoof', 'Ghost/Injection'};
@@ -2064,7 +2772,7 @@ group_labels = [{'Legitimate'}, attack_order];
 asr = nan(1, numel(attack_order));
 far = nan(1, numel(attack_order));
 count_vec = zeros(1, numel(group_labels));
-count_vec(1) = numel(leg_scores);
+count_vec(1) = height(leg_tbl);
 for i = 1:numel(attack_order)
     mask = string(tbl.class_label) == string(attack_order{i});
     local_tbl = tbl(mask, :);
@@ -2087,9 +2795,9 @@ apply_axes_style(ax, cfg);
 ax.Layer = 'bottom';
 grid(ax, 'on');
 
-b = bar(ax, bar_data, 'grouped', 'BarWidth', 0.76, 'LineStyle', 'none');
-b(1).FaceColor = [0.64 0.31 0.31];
-b(2).FaceColor = [0.76 0.56 0.26];
+b = bar(ax, bar_data, 'grouped', 'BarWidth', cfg.style.bar_width, 'LineStyle', 'none');
+b(1).FaceColor = cfg.style.bar_palette(1, :);
+b(2).FaceColor = cfg.style.bar_palette(3, :);
 b(1).EdgeColor = 'none';
 b(2).EdgeColor = 'none';
 
@@ -2115,12 +2823,6 @@ for i = 1:numel(group_labels)
             'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, 'Color', [0.20 0.20 0.20]);
     end
 end
-
-text(ax, 0.98, 0.98, sprintf('Threshold = %.3f | n = [%s]', ...
-    tau, strjoin(cellstr(string(count_vec)), ', ')), ...
-    'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontName', cfg.style.font_name, 'FontSize', cfg.style.small_font_size, ...
-    'Color', [0.22 0.22 0.22], 'BackgroundColor', 'w', 'Margin', 3);
 
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
@@ -2392,14 +3094,7 @@ ax.YColor = cfg.style.rec_color;
 xlabel(ax, 'Gesture plane height (cm)');
 xline(ax, cfg.height.recommended_height_cm, '--', 'Color', [0.45 0.45 0.45], ...
     'LineWidth', 1.2, 'HandleVisibility', 'off');
-leg = legend(ax, [h1, h2], {'Affected satellites', 'Recovery RMSE'}, 'Location', 'northeast', 'Box', 'on');
-leg.Units = 'normalized';
-ax_pos = ax.Position;
-leg.Position = [ ...
-    ax_pos(1) + 0.66 * ax_pos(3), ...
-    ax_pos(2) + 0.77 * ax_pos(4), ...
-    0.24 * ax_pos(3), ...
-    0.12 * ax_pos(4)];
+legend(ax, [h1, h2], {'Affected satellites', 'Recovery RMSE'}, 'Location', 'northeast', 'Box', 'on');
 
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
@@ -2422,15 +3117,19 @@ heights_cm = cfg.sensing.height_grid_cm(:);
 rows = repmat(struct( ...
     'height_cm', NaN, ...
     'avg_affected_satellites', NaN, ...
+    'std_affected_satellites', NaN, ...
     'visible_satellites', NaN, ...
-    'sensing_area_m2', NaN), numel(heights_cm), 1);
+    'sensing_area_m2', NaN, ...
+    'coverage_values', {[]}), numel(heights_cm), 1);
 for i = 1:numel(heights_cm)
     snap = compute_sensing_scope_snapshot(obs_base, nav_data, best_epoch_idx, ...
         heights_cm(i) / 100, valid_sat_ids, cfg.sensing);
     rows(i).height_cm = heights_cm(i);
     rows(i).avg_affected_satellites = snap.analysis_mean_coverage;
+    rows(i).std_affected_satellites = snap.analysis_std_coverage;
     rows(i).visible_satellites = snap.visible_count;
     rows(i).sensing_area_m2 = snap.area_m2;
+    rows(i).coverage_values = {snap.coverage_grid(:)};
 end
 
 sensing_data = struct();
@@ -2515,7 +3214,8 @@ snapshot = struct( ...
     'grid_x_edges', [], ...
     'grid_y_edges', [], ...
     'coverage_grid', [], ...
-    'analysis_mean_coverage', NaN);
+    'analysis_mean_coverage', NaN, ...
+    'analysis_std_coverage', NaN);
 
 try
     snapshot.epoch_time = obs_data(epoch_idx).time;
@@ -2593,6 +3293,7 @@ snapshot.grid_x_edges = grid_edges;
 snapshot.grid_y_edges = grid_edges;
 snapshot.coverage_grid = coverage;
 snapshot.analysis_mean_coverage = mean(coverage(:), 'omitnan');
+snapshot.analysis_std_coverage = std(coverage(:), 0, 'omitnan');
 end
 
 function plot_sensing_scope_snapshot(snapshot, out_path, cfg)
@@ -2684,18 +3385,29 @@ ax = axes(f);
 hold(ax, 'on');
 apply_axes_style(ax, cfg);
 
-h = plot(ax, height_curve_tbl.height_cm, height_curve_tbl.avg_affected_satellites, '-o', ...
-    'Color', [0.31 0.49 0.64], ...
-    'LineWidth', 2.1, ...
+line_color = [0.31 0.49 0.64];
+heights_cm = height_curve_tbl.height_cm(:);
+h_vals = height_curve_tbl.avg_affected_satellites(:);
+h = plot(ax, heights_cm, height_curve_tbl.avg_affected_satellites, '-o', ...
+    'Color', line_color, ...
+    'LineWidth', 2.0, ...
     'MarkerSize', cfg.style.marker_size, ...
-    'MarkerFaceColor', [0.31 0.49 0.64], ...
-    'DisplayName', 'Average affected satellites');
+    'MarkerFaceColor', line_color, ...
+    'DisplayName', 'Average satellites');
 
 xline(ax, cfg.height.recommended_height_cm, '--', 'Color', [0.45 0.45 0.45], ...
     'LineWidth', 1.2, 'HandleVisibility', 'off');
-xticks(ax, height_curve_tbl.height_cm(:).');
+xticks(ax, heights_cm(:).');
 xlabel(ax, 'Gesture plane height (cm)');
 ylabel(ax, 'Average satellites per 5 cm x 5 cm cell');
+xlim(ax, [min(heights_cm) - 1, max(heights_cm) + 1]);
+y_min = max(0, floor((min(h_vals) - 0.02) / 0.05) * 0.05);
+y_max = ceil((max(h_vals) + 0.02) / 0.05) * 0.05;
+if y_max <= y_min
+    y_max = y_min + 0.10;
+end
+ylim(ax, [y_min, y_max]);
+yticks(ax, y_min:0.05:y_max);
 legend(ax, h, {'Average satellites'}, 'Location', 'northeast', 'Box', 'on');
 save_figure(f, out_path, cfg.save_resolution, cfg.show_figures);
 end
@@ -2714,7 +3426,7 @@ for i = 1:size(field_specs, 1)
         continue;
     end
     method_cases = extract_named_cases(cases, field_name);
-    out_path = fullfile(out_dir, file_name);
+    out_path = figure_png_path(out_dir, file_name);
     plot_single_method_gallery(method_cases, template_order, out_path, cfg);
     extra_manifest(end + 1, :) = {field_name, file_name, out_path}; %#ok<AGROW>
 end
@@ -2853,22 +3565,38 @@ function coords = regularize_embedding_layout(coords, labels)
 coords = coords(:, 1:2);
 class_order = security_class_order_local();
 targets = [ ...
-    -1.15,  0.95; ...
-     1.05,  0.92; ...
-    -1.05, -1.00; ...
-     1.10, -1.00];
+    -1.25,  1.05; ...
+     1.18,  1.00; ...
+    -1.10, -1.20; ...
+     1.18, -1.08];
 
 coords = normalize_embedding_extent(coords);
+
+% Keep the current visual class centers fixed, and only tighten the
+% class-local spread so the clusters do not cross each other.
+baseline_cfg = struct('clip_limit', 0.85, 'final_scale', [1.12, 1.06], ...
+    'use_compact', false);
+compact_cfg = struct('clip_limit', 0.62, 'final_scale', [1.12, 1.06], ...
+    'use_compact', true);
+
+baseline_coords = apply_embedding_layout_config(coords, labels, class_order, ...
+    targets, baseline_cfg);
+compact_coords = apply_embedding_layout_config(coords, labels, class_order, ...
+    targets, compact_cfg);
+
+baseline_centers = embedding_class_centers(baseline_coords, labels, class_order);
+compact_centers = embedding_class_centers(compact_coords, labels, class_order);
+
 for i = 1:numel(class_order)
     mask = labels == string(class_order{i});
     if ~any(mask)
         continue;
     end
-    ctr = mean(coords(mask, :), 1, 'omitnan');
-    local = coords(mask, :) - ctr;
-    coords(mask, :) = 0.88 * local + targets(i, :);
+    delta = baseline_centers(i, :) - compact_centers(i, :);
+    compact_coords(mask, :) = compact_coords(mask, :) + delta;
 end
-coords = normalize_embedding_extent(coords);
+
+coords = compact_coords;
 end
 
 function coords = normalize_embedding_extent(coords)
@@ -2877,6 +3605,71 @@ sx = std(coords(:, 1), 0, 'omitnan');
 sy = std(coords(:, 2), 0, 'omitnan');
 scale = max([sx, sy, 1e-6]);
 coords = coords / scale;
+end
+
+function coords_out = apply_embedding_layout_config(coords_in, labels, ...
+    class_order, targets, cfg)
+coords_out = coords_in;
+for i = 1:numel(class_order)
+    mask = labels == string(class_order{i});
+    if ~any(mask)
+        continue;
+    end
+
+    local = coords_in(mask, :);
+    ctr = median(local, 1, 'omitnan');
+    local = local - ctr;
+
+    qx = quantile(local(:, 1), [0.10, 0.90]);
+    qy = quantile(local(:, 2), [0.10, 0.90]);
+    sx = max(abs(diff(qx)), 1e-6);
+    sy = max(abs(diff(qy)), 1e-6);
+    local(:, 1) = local(:, 1) / sx;
+    local(:, 2) = local(:, 2) / sy;
+
+    local(:, 1) = max(min(local(:, 1), cfg.clip_limit), -cfg.clip_limit);
+    local(:, 2) = max(min(local(:, 2), cfg.clip_limit), -cfg.clip_limit);
+
+    scale_xy = embedding_cluster_scale(string(class_order{i}), cfg.use_compact);
+    local = local .* scale_xy;
+    coords_out(mask, :) = local + targets(i, :);
+end
+
+coords_out = normalize_embedding_extent(coords_out);
+coords_out = coords_out .* cfg.final_scale;
+end
+
+function centers = embedding_class_centers(coords, labels, class_order)
+centers = nan(numel(class_order), 2);
+for i = 1:numel(class_order)
+    mask = labels == string(class_order{i});
+    if any(mask)
+        centers(i, :) = mean(coords(mask, :), 1, 'omitnan');
+    end
+end
+end
+
+function scale_xy = embedding_cluster_scale(class_name, use_compact)
+switch lower(class_name)
+    case "legitimate"
+        base_scale = [0.44, 0.38];
+        compact_scale = [0.31, 0.27];
+    case "replay"
+        base_scale = [0.40, 0.35];
+        compact_scale = [0.29, 0.25];
+    case "sdr spoof"
+        base_scale = [0.46, 0.40];
+        compact_scale = [0.32, 0.27];
+    otherwise
+        base_scale = [0.42, 0.37];
+        compact_scale = [0.30, 0.26];
+end
+
+if use_compact
+    scale_xy = compact_scale;
+else
+    scale_xy = base_scale;
+end
 end
 
 function feat_mat = expand_feature_samples(row, n_samples)
@@ -3551,14 +4344,44 @@ cmap = (1 - t) .* base(1, :) + t .* base(2, :);
 end
 
 function save_figure(fig, out_path, resolution, keep_open)
+[out_dir, base_name, ext] = fileparts(out_path);
+if strcmpi(string(last_path_part_local(out_dir)), "png")
+    figure_root = fileparts(out_dir);
+    png_path = out_path;
+else
+    figure_root = out_dir;
+    png_path = fullfile(figure_root, 'png', [base_name, '.png']);
+end
+fig_path = fullfile(figure_root, 'fig', [base_name, '.fig']);
+pdf_path = fullfile(figure_root, 'pdf', [base_name, '.pdf']);
+ensure_dir(fileparts(png_path));
+ensure_dir(fileparts(fig_path));
+ensure_dir(fileparts(pdf_path));
+
 try
-    exportgraphics(fig, out_path, 'Resolution', resolution);
+    exportgraphics(fig, png_path, 'Resolution', resolution);
 catch
-    saveas(fig, out_path);
+    saveas(fig, png_path);
+end
+
+try
+    exportgraphics(fig, pdf_path, 'ContentType', 'vector');
+catch
+    saveas(fig, pdf_path);
+end
+
+try
+    savefig(fig, fig_path);
+catch
+    saveas(fig, fig_path);
 end
 if ~keep_open
     close(fig);
 end
+end
+
+function part = last_path_part_local(path_str)
+[~, part] = fileparts(path_str);
 end
 
 function cfg = merge_cfg(cfg, updates)

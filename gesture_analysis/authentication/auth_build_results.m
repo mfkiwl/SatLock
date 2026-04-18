@@ -15,6 +15,8 @@ rows = repmat(empty_auth_row_local(), n_case, 1);
 summary_rows = repmat(struct( ...
     'case_id', "", ...
     'true_label', "", ...
+    'scenario_applied', false, ...
+    'scenario_mode', "", ...
     'attack_applied', false, ...
     'attack_mode', "", ...
     'predicted_label', "", ...
@@ -46,6 +48,8 @@ for i = 1:n_case
 
     rows(i).case_id = case_id;
     rows(i).true_label = true_label;
+    rows(i).scenario_applied = logical(resolve_scenario_flag_local(case_item));
+    rows(i).scenario_mode = string(resolve_scenario_mode_local(case_item));
     rows(i).attack_applied = logical(resolve_attack_flag_local(case_item));
     rows(i).attack_mode = string(resolve_attack_mode_local(case_item));
     rows(i).predicted_label = cls.predicted_label;
@@ -68,6 +72,8 @@ for i = 1:n_case
 
     summary_rows(i).case_id = case_id;
     summary_rows(i).true_label = true_label;
+    summary_rows(i).scenario_applied = logical(resolve_scenario_flag_local(case_item));
+    summary_rows(i).scenario_mode = string(resolve_scenario_mode_local(case_item));
     summary_rows(i).attack_applied = logical(resolve_attack_flag_local(case_item));
     summary_rows(i).attack_mode = string(resolve_attack_mode_local(case_item));
     summary_rows(i).predicted_label = cls.predicted_label;
@@ -108,6 +114,8 @@ function row = empty_auth_row_local()
 row = struct( ...
     'case_id', "", ...
     'true_label', "", ...
+    'scenario_applied', false, ...
+    'scenario_mode', "", ...
     'attack_applied', false, ...
     'attack_mode', "", ...
     'predicted_label', "", ...
@@ -144,6 +152,22 @@ if isfield(case_item, 'attack_applied')
     tf = logical(case_item.attack_applied);
 else
     tf = false;
+end
+end
+
+function tf = resolve_scenario_flag_local(case_item)
+if isfield(case_item, 'scenario_applied')
+    tf = logical(case_item.scenario_applied);
+else
+    tf = false;
+end
+end
+
+function mode_name = resolve_scenario_mode_local(case_item)
+if isfield(case_item, 'scenario_mode') && strlength(string(case_item.scenario_mode)) > 0
+    mode_name = string(case_item.scenario_mode);
+else
+    mode_name = "open_field";
 end
 end
 

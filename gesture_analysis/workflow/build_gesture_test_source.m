@@ -17,13 +17,15 @@ rng(cfg.random_seed, 'twister');
 
 parsed = layer1_parse_raw_data(cfg);
 injected = layer2_inject_templates(parsed, cfg);
-attack = layer_attack_simulation(parsed, injected, cfg);
+scenario = layer_scenario_simulation(parsed, injected, cfg);
+attack = layer_attack_simulation(parsed, scenario, cfg);
 trajectory = layer3_recover_trajectories(parsed, attack, cfg);
 auth = layer4_authenticate_gestures(trajectory, cfg);
 
 src = struct();
 src.parsed = strip_parsed_local(parsed);
 src.injected = strip_injected_local(injected);
+src.scenario = strip_scenario_local(scenario);
 src.attack = strip_attack_local(attack);
 src.trajectory = trajectory;
 src.auth = auth;
@@ -34,6 +36,7 @@ src.out_dir = '';
 src.workflow = struct( ...
     'layer1', "parse_raw_data", ...
     'layer2', "inject_template_data", ...
+    'scenario_layer', "simulate_environment_scenario", ...
     'attack_layer', "simulate_attack", ...
     'layer3', "recover_trajectories", ...
     'layer4', "authenticate_gestures", ...
@@ -60,6 +63,22 @@ cfg.span_cfg.max_span_y = 0.50;
 cfg.inject_cfg = struct();
 cfg.inject_cfg.enable = true;
 cfg.inject_cfg.real_case_label = "";
+
+cfg.scenario_cfg = struct();
+cfg.scenario_cfg.enable = false;
+cfg.scenario_cfg.mode = "open_field";
+cfg.scenario_cfg.random_seed = cfg.random_seed + 31;
+cfg.scenario_cfg.building_blocked_ratio = 0.40;
+cfg.scenario_cfg.building_atten_db = 3.1;
+cfg.scenario_cfg.building_blocked_floor_db = 20.2;
+cfg.scenario_cfg.building_nan_prob = 0.46;
+cfg.scenario_cfg.building_noise_sigma = 0.31;
+cfg.scenario_cfg.building_multipath_amp = 1.58;
+cfg.scenario_cfg.tree_atten_db = 2.45;
+cfg.scenario_cfg.tree_noise_sigma = 0.38;
+cfg.scenario_cfg.tree_flicker_amp = 1.32;
+cfg.scenario_cfg.tree_dropout_prob = 0.17;
+cfg.scenario_cfg.tree_partial_nan_ratio = 0.19;
 
 cfg.attack_cfg = struct();
 cfg.attack_cfg.enable = false;
@@ -158,6 +177,18 @@ end
 for i = 1:numel(attack.cases)
     if isfield(attack.cases(i), 'obs_case')
         attack.cases(i).obs_case = [];
+    end
+end
+end
+
+function scenario = strip_scenario_local(scenario_in)
+scenario = scenario_in;
+if ~isfield(scenario, 'cases')
+    return;
+end
+for i = 1:numel(scenario.cases)
+    if isfield(scenario.cases(i), 'obs_case')
+        scenario.cases(i).obs_case = [];
     end
 end
 end

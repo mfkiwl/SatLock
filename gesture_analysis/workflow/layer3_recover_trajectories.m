@@ -9,6 +9,8 @@ gallery_cases = repmat(empty_output_case_local(), n_case, 1);
 summary_rows = repmat(struct( ...
     'case_id', "", ...
     'true_label', "", ...
+    'scenario_applied', false, ...
+    'scenario_mode', "", ...
     'attack_applied', false, ...
     'attack_mode', "", ...
     'gallery_rmse_m', NaN, ...
@@ -38,6 +40,8 @@ for i = 1:n_case
     core_case.case_id = inject_case.case_id;
     core_case.true_label = string(inject_case.true_label);
     core_case.source_mode = string(inject_case.source_mode);
+    core_case.scenario_applied = logical(resolve_scenario_flag_local(inject_case));
+    core_case.scenario_mode = string(resolve_scenario_mode_local(inject_case));
     core_case.attack_applied = logical(resolve_attack_flag_local(inject_case));
     core_case.attack_mode = string(resolve_attack_mode_local(inject_case));
     core_case.attack_notes = string(resolve_attack_notes_local(inject_case));
@@ -46,6 +50,8 @@ for i = 1:n_case
     gallery_case.case_id = inject_case.case_id;
     gallery_case.true_label = string(inject_case.true_label);
     gallery_case.source_mode = string(inject_case.source_mode);
+    gallery_case.scenario_applied = logical(resolve_scenario_flag_local(inject_case));
+    gallery_case.scenario_mode = string(resolve_scenario_mode_local(inject_case));
     gallery_case.attack_applied = logical(resolve_attack_flag_local(inject_case));
     gallery_case.attack_mode = string(resolve_attack_mode_local(inject_case));
     gallery_case.attack_notes = string(resolve_attack_notes_local(inject_case));
@@ -56,6 +62,8 @@ for i = 1:n_case
 
     summary_rows(i).case_id = inject_case.case_id;
     summary_rows(i).true_label = string(inject_case.true_label);
+    summary_rows(i).scenario_applied = logical(resolve_scenario_flag_local(inject_case));
+    summary_rows(i).scenario_mode = string(resolve_scenario_mode_local(inject_case));
     summary_rows(i).attack_applied = logical(resolve_attack_flag_local(inject_case));
     summary_rows(i).attack_mode = string(resolve_attack_mode_local(inject_case));
     summary_rows(i).gallery_rmse_m = gallery_case.metrics.rmse_m;
@@ -244,6 +252,8 @@ case_item = struct( ...
     'case_id', "", ...
     'mode', "", ...
     'source_mode', "", ...
+    'scenario_applied', false, ...
+    'scenario_mode', "", ...
     'attack_applied', false, ...
     'attack_mode', "", ...
     'attack_notes', "", ...
@@ -271,6 +281,22 @@ if isfield(case_item, 'attack_applied')
     tf = logical(case_item.attack_applied);
 else
     tf = false;
+end
+end
+
+function tf = resolve_scenario_flag_local(case_item)
+if isfield(case_item, 'scenario_applied')
+    tf = logical(case_item.scenario_applied);
+else
+    tf = false;
+end
+end
+
+function mode_name = resolve_scenario_mode_local(case_item)
+if isfield(case_item, 'scenario_mode') && strlength(string(case_item.scenario_mode)) > 0
+    mode_name = string(case_item.scenario_mode);
+else
+    mode_name = "open_field";
 end
 end
 
